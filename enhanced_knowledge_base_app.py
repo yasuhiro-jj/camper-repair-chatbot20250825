@@ -1675,10 +1675,11 @@ def run_diagnostic_flow():
     # 接続状況を表示（非表示化）
     # st.info(f"**NotionDB接続状況**: {notion_status}")
     
-    if notion_status == "❌ 未接続":
-        st.warning("NotionDBに接続できません。環境変数の設定を確認してください。")
-        st.info("**必要な環境変数**:")
-        st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
+    # NotionDB接続エラーメッセージを非表示化（本番環境対応）
+    # if notion_status == "❌ 未接続":
+    #     st.warning("NotionDBに接続できません。環境変数の設定を確認してください。")
+    #     st.info("**必要な環境変数**:")
+    #     st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
     
     # 診断モードの選択
     diagnostic_mode = st.radio(
@@ -1876,7 +1877,8 @@ def run_interactive_diagnostic(diagnostic_data, repair_cases):
         for node in diagnostic_data["start_nodes"]:
             if node["title"]:
                 categories[node["title"]] = node["symptoms"]
-        st.success("✅ NotionDBから診断データを読み込みました")
+        # NotionDB接続成功メッセージを非表示化（本番環境対応）
+        # st.success("✅ NotionDBから診断データを読み込みました")
     else:
         # 詳細なデフォルトのカテゴリ（NotionDBが利用できない場合）
         categories = {
@@ -1929,11 +1931,12 @@ def run_interactive_diagnostic(diagnostic_data, repair_cases):
                 "ドアが閉まらない", "窓が開かない", "家具が壊れる", "床が抜ける", "壁が剥がれる"
             ]
         }
-        st.warning("⚠️ NotionDBが利用できないため、デフォルトの診断データを使用しています")
-        st.info("💡 NotionDB接続を改善するには:")
-        st.info("1. .streamlit/secrets.tomlの設定を確認")
-        st.info("2. Notion APIキーとデータベースIDが正しいか確認")
-        st.info("3. データベースへのアクセス権限を確認")
+        # NotionDB接続エラーメッセージを非表示化（本番環境対応）
+        # st.warning("⚠️ NotionDBが利用できないため、デフォルトの診断データを使用しています")
+        # st.info("💡 NotionDB接続を改善するには:")
+        # st.info("1. .streamlit/secrets.tomlの設定を確認")
+        # st.info("2. Notion APIキーとデータベースIDが正しいか確認")
+        # st.info("3. データベースへのアクセス権限を確認")
     
     # カテゴリ選択
     selected_category = st.selectbox("症状のカテゴリを選択してください:", list(categories.keys()))
@@ -1973,9 +1976,10 @@ def run_detailed_diagnostic(diagnostic_data, repair_cases):
     st.markdown("### 🔍 詳細診断")
     st.markdown("NotionDBの3つのデータベースのリレーションを活用した詳細な診断を行います。")
     
-    if not diagnostic_data:
-        st.warning("NotionDBの診断データが利用できません。")
-        return
+    # NotionDB接続エラーメッセージを非表示化（本番環境対応）
+    # if not diagnostic_data:
+    #     st.warning("NotionDBの診断データが利用できません。")
+    #     return
     
     # リレーション統計の表示
     st.markdown("#### 📈 データベースリレーション統計")
@@ -2153,14 +2157,29 @@ def main():
         background-color: #667eea;
         color: white;
     }
+    
+        /* レスポンシブデザイン - スマホ対応 */
+        @media (max-width: 768px) {
+            .main-header h1 {
+                font-size: 1.0rem !important;
+                line-height: 1.2;
+            }
+            .main-header p {
+                font-size: 0.7rem !important;
+            }
+            .stTabs [data-baseweb="tab"] {
+                padding: 8px 12px;
+                font-size: 0.9rem;
+            }
+        }
     </style>
     """, unsafe_allow_html=True)
     
     # ヘッダー
-    st.markdown("""
+        st.markdown("""
     <div class="main-header">
-        <h1>🚐 キャンピングカー修理専門AI相談</h1>
-        <p>豊富な知識ベースを活用した専門的な修理・メンテナンスアドバイス</p>
+        <h1 style="font-size: 1.3rem; margin-bottom: 0.5rem;">🚐 キャンピングカー修理専門AI相談</h1>
+        <p style="font-size: 0.8rem; margin-top: 0;">豊富な知識ベースを活用した専門的な修理・メンテナンスアドバイス</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -2301,66 +2320,66 @@ def show_system_info():
         if client:
             st.success("✅ Notionクライアント: 初期化成功")
             
-            # 診断フローデータベース
-            node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
-            if node_db_id:
-                st.info(f"📋 診断フローDB: {node_db_id[:8]}...")
-                try:
-                    diagnostic_data = load_notion_diagnostic_data()
-                    if diagnostic_data and diagnostic_data.get('nodes'):
-                        st.success(f"✅ 診断フローDB: 接続成功 ({len(diagnostic_data.get('nodes', []))}件のノード)")
-                        
-                        # リレーション統計
-                        nodes_with_relations = sum(1 for node in diagnostic_data.get('nodes', []) 
-                                                  if node.get("related_cases") or node.get("related_items"))
-                        # st.info(f"🔗 リレーション活用: {nodes_with_relations}/{len(diagnostic_data.get('nodes', []))}件のノード")  # 非表示化
-                    else:
-                        st.warning("⚠️ 診断フローDB: データなしまたは接続失敗")
-                except Exception as e:
-                    st.error(f"❌ 診断フローDB: 接続失敗 - {str(e)}")
-                    st.info("💡 データベースIDとAPIキーの権限を確認してください")
-            else:
-                st.warning("⚠️ 診断フローDB: ID未設定")
-                st.info("💡 .streamlit/secrets.tomlにNODE_DB_IDを設定してください")
+            # 診断フローデータベース（非表示化）
+            # node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
+            # if node_db_id:
+            #     st.info(f"📋 診断フローDB: {node_db_id[:8]}...")
+            #     try:
+            #         diagnostic_data = load_notion_diagnostic_data()
+            #         if diagnostic_data and diagnostic_data.get('nodes'):
+            #             st.success(f"✅ 診断フローDB: 接続成功 ({len(diagnostic_data.get('nodes', []))}件のノード)")
+            #             
+            #             # リレーション統計
+            #             nodes_with_relations = sum(1 for node in diagnostic_data.get('nodes', []) 
+            #                                       if node.get("related_cases") or node.get("related_items"))
+            #             # st.info(f"🔗 リレーション活用: {nodes_with_relations}/{len(diagnostic_data.get('nodes', []))}件のノード")  # 非表示化
+            #         else:
+            #             st.warning("⚠️ 診断フローDB: データなしまたは接続失敗")
+            #     except Exception as e:
+            #         st.error(f"❌ 診断フローDB: 接続失敗 - {str(e)}")
+            #         st.info("💡 データベースIDとAPIキーの権限を確認してください")
+            # else:
+            #     st.warning("⚠️ 診断フローDB: ID未設定")
+            #     st.info("💡 .streamlit/secrets.tomlにNODE_DB_IDを設定してください")
             
-            # 修理ケースデータベース
-            case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
-            if case_db_id:
-                st.info(f"🔧 修理ケースDB: {case_db_id[:8]}...")
-                try:
-                    repair_cases = load_notion_repair_cases()
-                    if repair_cases:
-                        st.success(f"✅ 修理ケースDB: 接続成功 ({len(repair_cases)}件のケース)")
-                        
-                        # リレーション統計
-                        cases_with_relations = sum(1 for case in repair_cases 
-                                                  if case.get("related_nodes") or case.get("related_items"))
-                        # st.info(f"🔗 リレーション活用: {cases_with_relations}/{len(repair_cases)}件のケース")  # 非表示化
-                    else:
-                        st.warning("⚠️ 修理ケースDB: データなし")
-                except Exception as e:
-                    st.error(f"❌ 修理ケースDB: 接続失敗 - {str(e)}")
-                    st.info("💡 データベースIDとAPIキーの権限を確認してください")
-            else:
-                st.warning("⚠️ 修理ケースDB: ID未設定")
-                st.info("💡 .streamlit/secrets.tomlにCASE_DB_IDを設定してください")
+            # 修理ケースデータベース（非表示化）
+            # case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
+            # if case_db_id:
+            #     st.info(f"🔧 修理ケースDB: {case_db_id[:8]}...")
+            #     try:
+            #         repair_cases = load_notion_repair_cases()
+            #         if repair_cases:
+            #             st.success(f"✅ 修理ケースDB: 接続成功 ({len(repair_cases)}件のケース)")
+            #             
+            #             # リレーション統計
+            #             cases_with_relations = sum(1 for case in repair_cases 
+            #                                       if case.get("related_nodes") or case.get("related_items"))
+            #             # st.info(f"🔗 リレーション活用: {cases_with_relations}/{len(repair_cases)}件のケース")  # 非表示化
+            #     else:
+            #         st.warning("⚠️ 修理ケースDB: データなし")
+            #     except Exception as e:
+            #         st.error(f"❌ 修理ケースDB: 接続失敗 - {str(e)}")
+            #         st.info("💡 データベースIDとAPIキーの権限を確認してください")
+            # else:
+            #     st.warning("⚠️ 修理ケースDB: ID未設定")
+            #     st.info("💡 .streamlit/secrets.tomlにCASE_DB_IDを設定してください")
             
-            # 部品・工具データベース
-            item_db_id = st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
-            if item_db_id:
-                st.info(f"🛠️ 部品・工具DB: {item_db_id[:8]}...")
-                st.info("ℹ️ 部品・工具DBの接続テストは実装予定")
-            else:
-                st.warning("⚠️ 部品・工具DB: ID未設定")
-                st.info("💡 .streamlit/secrets.tomlにITEM_DB_IDを設定してください")
-        else:
-            st.error("❌ Notionクライアント: 初期化失敗")
-            st.info("💡 notion-clientライブラリのインストールとAPIキーの確認が必要です")
+            # 部品・工具データベース（非表示化）
+            # item_db_id = st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
+            # if item_db_id:
+            #     st.info(f"🛠️ 部品・工具DB: {item_db_id[:8]}...")
+            #     st.info("ℹ️ 部品・工具DBの接続テストは実装予定")
+            # else:
+            #     st.warning("⚠️ 部品・工具DB: ID未設定")
+            #     st.info("💡 .streamlit/secrets.tomlにITEM_DB_IDを設定してください")
+        # else:
+        #     st.error("❌ Notionクライアント: 初期化失敗")
+        #     st.info("💡 notion-clientライブラリのインストールとAPIキーの確認が必要です")
         
-    else:
-        st.error("❌ Notion API: 未設定")
-        st.info("**設定方法**:")
-        st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
+    # else:
+    #     st.error("❌ Notion API: 未設定")
+    #     st.info("**設定方法**:")
+    #     st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
     
     # 知識ベース状況
     st.markdown("#### 📚 知識ベース状況")
