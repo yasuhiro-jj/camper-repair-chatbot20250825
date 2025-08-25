@@ -2176,7 +2176,7 @@ def main():
     """, unsafe_allow_html=True)
     
     # ヘッダー
-        st.markdown("""
+    st.markdown("""
     <div class="main-header">
         <h1 style="font-size: 1.3rem; margin-bottom: 0.5rem;">🚐 キャンピングカー修理専門AI相談</h1>
         <p style="font-size: 0.8rem; margin-top: 0;">豊富な知識ベースを活用した専門的な修理・メンテナンスアドバイス</p>
