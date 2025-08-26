@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, AIMessage
 import json
@@ -14,7 +15,8 @@ def install_required_packages():
     """必要なライブラリを自動インストール"""
     required_packages = [
         "notion-client==2.2.1",
-        "python-dotenv"
+        "python-dotenv",
+        "toml"
     ]
     
     for package in required_packages:
@@ -1635,6 +1637,40 @@ def run_diagnostic_flow():
         except Exception as e:
             notion_status = f"❌ エラー: {str(e)[:50]}"
     
+    # 開発者モード機能（認証済みの場合のみ表示）
+    auth_status = st.session_state.get("developer_authenticated", False)
+    
+    if auth_status:
+        # 認証済みの場合のみ開発者モード機能を表示
+        if st.session_state.get('sidebar_visible', True):
+            # サイドバーに開発者モード機能を表示
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### 🔧 開発者モード")
+            st.sidebar.success("🔧 開発者モード: 認証済み")
+            
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                if st.button("🔓 ログアウト", help="開発者認証を解除します"):
+                    st.session_state.developer_authenticated = False
+                    st.rerun()
+            with col2:
+                if st.button("🔄 更新", help="設定を再読み込みします"):
+                    st.rerun()
+        else:
+            # サイドバー非表示時はメイン画面に開発者モード機能を表示
+            st.markdown("---")
+            st.markdown("### 🔧 開発者モード")
+            st.success("🔧 開発者モード: 認証済み")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔓 ログアウト", help="開発者認証を解除します"):
+                    st.session_state.developer_authenticated = False
+                    st.rerun()
+            with col2:
+                if st.button("🔄 更新", help="設定を再読み込みします"):
+                    st.rerun()
+    
     # 接続状況を表示（非表示化）
     # st.info(f"**NotionDB接続状況**: {notion_status}")
     
@@ -1644,18 +1680,71 @@ def run_diagnostic_flow():
     #     st.info("**必要な環境変数**:")
     #     st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
     
-    # 診断モードの選択
+    # 診断モードの選択（開発者モード対応）
+    if is_developer_mode():
+        diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断", "🔍 詳細診断"]
+    else:
+        diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断"]
+    
     diagnostic_mode = st.radio(
         "診断モードを選択してください:",
-        ["🤖 AI診断（推奨）", "📋 対話式診断", "🔍 詳細診断"]
+        diagnostic_options
     )
+    
+    # デバッグ情報を追加（非表示化）
+    # if st.session_state.get('sidebar_visible', True):
+    #     if st.sidebar.checkbox("🔍"):
+    #         st.sidebar.write("**デバッグ情報:**")
+    #         st.sidebar.write(f"• 選択されたモード: {diagnostic_mode}")
+    #         st.sidebar.write(f"• 開発者モード関数結果: {is_developer_mode()}")
+    #         st.sidebar.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
+    #         st.sidebar.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
+    #         st.sidebar.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
+    #         
+    #         # 認証状態の詳細情報
+    #         st.sidebar.write("**認証状態の詳細:**")
+    #         st.sidebar.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
+    #         st.sidebar.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
+    #         
+    #         # 認証リセットボタン
+    #         if st.sidebar.button("🔄 認証状態をリセット"):
+    #             st.session_state.developer_authenticated = False
+    #             st.sidebar.success("認証状態をリセットしました")
+    #             st.rerun()
+    # else:
+    #     if st.checkbox("🔍"):
+    #         st.write("**デバッグ情報:**")
+    #         st.write(f"• 選択されたモード: {diagnostic_mode}")
+    #         st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
+    #         st.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
+    #         st.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
+    #         
+    #         # 認証状態の詳細情報
+    #         st.write("**認証状態の詳細:**")
+    #         st.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
+    #         st.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
+    #         
+    #         # 認証リセットボタン
+    #         if st.button("🔄 認証状態をリセット"):
+    #             st.session_state.developer_authenticated = False
+    #             st.success("認証状態をリセットしました")
+    #             st.rerun()
     
     if diagnostic_mode == "🤖 AI診断（推奨）":
         run_ai_diagnostic(diagnostic_data, repair_cases)
     elif diagnostic_mode == "📋 対話式診断":
         run_interactive_diagnostic(diagnostic_data, repair_cases)
-    else:
-        run_detailed_diagnostic(diagnostic_data, repair_cases)
+    elif diagnostic_mode == "🔍 詳細診断":
+        if is_developer_mode():
+            st.success("✅ 開発者認証済み - 詳細診断を開始します")
+            run_detailed_diagnostic(diagnostic_data, repair_cases)
+        else:
+            st.error("❌ 詳細診断には開発者認証が必要です")
+            if st.session_state.get('sidebar_visible', True):
+                st.info("💡 サイドバーの「🔐 開発者認証」ボタンから認証してください")
+            else:
+                st.info("💡 上記の「🔐 開発者認証」ボタンから認証してください")
+            show_developer_auth()
 
 def run_ai_diagnostic(diagnostic_data, repair_cases):
     """AI診断モード（リレーション活用版）"""
@@ -1940,6 +2029,12 @@ def run_detailed_diagnostic(diagnostic_data, repair_cases):
     st.markdown("### 🔍 詳細診断")
     st.markdown("NotionDBの3つのデータベースのリレーションを活用した詳細な診断を行います。")
     
+    # デバッグ情報を追加（非表示化）
+    # st.info(f"🔧 詳細診断モードが開始されました")
+    # st.info(f"• 認証状態: {st.session_state.get('developer_authenticated', False)}")
+    # st.info(f"• 診断データ: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")
+    # st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")
+    
     # リレーション統計の詳細分析
     relation_stats = analyze_relation_statistics()
     
@@ -1998,17 +2093,20 @@ def run_detailed_diagnostic(diagnostic_data, repair_cases):
             st.write(f"• 診断ノードへのリレーション: {details['case_to_node']}件")
             st.write(f"• 部品・工具へのリレーション: {details['case_to_item']}件")
         
-            # リレーション改善提案
-    if utilization_rate < 50:
-        st.warning("⚠️ リレーション活用率が低いです。データベース間の関連付けを強化することをお勧めします。")
-        st.info("💡 改善方法:")
-        st.info("1. 診断ノードと修理ケースの関連付けを追加")
-        st.info("2. 部品・工具データベースとの関連付けを設定")
-        st.info("3. 既存データの手動関連付けを実施")
-        
-        # リレーション改善機能の表示
-        create_relation_suggestion_ui()
-        display_relation_improvement_guide()
+        # リレーション改善提案
+        if total_nodes + total_cases > 0:
+            utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
+            
+            if utilization_rate < 50:
+                st.warning("⚠️ リレーション活用率が低いです。データベース間の関連付けを強化することをお勧めします。")
+                st.info("💡 改善方法:")
+                st.info("1. 診断ノードと修理ケースの関連付けを追加")
+                st.info("2. 部品・工具データベースとの関連付けを設定")
+                st.info("3. 既存データの手動関連付けを実施")
+                
+                # リレーション改善機能の表示
+                create_relation_suggestion_ui()
+                display_relation_improvement_guide()
     else:
         st.warning("⚠️ リレーション統計の取得に失敗しました")
         total_nodes = len(diagnostic_data.get("nodes", [])) if diagnostic_data else 0
@@ -2139,56 +2237,79 @@ def test_notion_connection():
         return False, f"接続テスト失敗: {str(e)}"
 
 def main():
+    # セッション状態の初期化
+    if "developer_authenticated" not in st.session_state:
+        st.session_state.developer_authenticated = False
+    
     st.set_page_config(
         page_title="キャンピングカー修理AI相談",
         page_icon="🚐",
         layout="wide"
     )
     
+    # サイドバー表示/非表示の状態管理
+    if 'sidebar_visible' not in st.session_state:
+        st.session_state.sidebar_visible = False
+    
     # カスタムCSS
-    st.markdown("""
+    st.markdown(f"""
     <style>
-    .main-header {
+    .main-header {{
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
         border-radius: 10px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
-    }
-    .chat-container {
+    }}
+    .chat-container {{
         background: #f8f9fa;
         padding: 1.5rem;
         border-radius: 10px;
         border-left: 4px solid #667eea;
-    }
-    .stTabs [data-baseweb="tab-list"] {
+    }}
+    .stTabs [data-baseweb="tab-list"] {{
         gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
+    }}
+    .stTabs [data-baseweb="tab"] {{
         background-color: #f0f2f6;
         border-radius: 4px 4px 0px 0px;
         padding: 10px 16px;
-    }
-    .stTabs [aria-selected="true"] {
+    }}
+    .stTabs [aria-selected="true"] {{
         background-color: #667eea;
         color: white;
-    }
+    }}
+    
+    /* サイドバー非表示設定 */
+    {f'''
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+    section[data-testid="stSidebar"] {{
+        display: none !important;
+    }}
+    .main .block-container {{
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
+    }}
+    ''' if not st.session_state.sidebar_visible else ''}
     
         /* レスポンシブデザイン - スマホ対応 */
-        @media (max-width: 768px) {
-            .main-header h1 {
+        @media (max-width: 768px) {{
+            .main-header h1 {{
                 font-size: 1.0rem !important;
                 line-height: 1.2;
-            }
-            .main-header p {
+            }}
+            .main-header p {{
                 font-size: 0.7rem !important;
-            }
-            .stTabs [data-baseweb="tab"] {
+            }}
+            .stTabs [data-baseweb="tab"] {{
                 padding: 8px 12px;
                 font-size: 0.9rem;
-            }
-        }
+            }}
+        }}
     </style>
     """, unsafe_allow_html=True)
     
@@ -2201,6 +2322,17 @@ def main():
         <p style="font-size: 0.8rem; margin-top: 0;">豊富な知識ベースを活用した専門的な修理・メンテナンスアドバイス</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # サイドバー表示/非表示の切り替えボタン（非表示化）
+    # col1, col2, col3 = st.columns([1, 2, 1])
+    # with col2:
+    #     if st.button(
+    #         "", 
+    #         help="サイドバーの表示を切り替えます",
+    #         type="secondary"
+    #     ):
+    #         st.session_state.sidebar_visible = not st.session_state.sidebar_visible
+    #         st.rerun()
     
     # タブ作成（システム情報タブを非表示）
     tab1, tab2 = st.tabs(["💬 AIチャット相談", "🔍 対話式症状診断"])
@@ -2243,13 +2375,6 @@ def main():
     
     with tab2:
         run_diagnostic_flow()
-    
-    # サイドバーを非表示にする
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {display: none;}
-    </style>
-    """, unsafe_allow_html=True)
     
     # 追加質問エリア
     st.markdown("---")
@@ -2367,41 +2492,7 @@ def show_system_info():
             #     st.info(f"🔧 修理ケースDB: {case_db_id[:8]}...")
             #     try:
             #         repair_cases = load_notion_repair_cases()
-            #         if repair_cases:
-            #             st.success(f"✅ 修理ケースDB: 接続成功 ({len(repair_cases)}件のケース)")
-            #             
-            #             # リレーション統計
-            #             cases_with_relations = sum(1 for case in repair_cases 
-            #                                       if case.get("related_nodes") or case.get("related_items"))
-            #             # st.info(f"🔗 リレーション活用: {cases_with_relations}/{len(repair_cases)}件のケース")  # 非表示化
-            #     else:
-            #         st.warning("⚠️ 修理ケースDB: データなし")
-            #     except Exception as e:
-            #         st.error(f"❌ 修理ケースDB: 接続失敗 - {str(e)}")
-            #         st.info("💡 データベースIDとAPIキーの権限を確認してください")
-            # else:
-            #     st.warning("⚠️ 修理ケースDB: ID未設定")
-            #     st.info("💡 .streamlit/secrets.tomlにCASE_DB_IDを設定してください")
-            
-            # 部品・工具データベース（非表示化）
-            # item_db_id = st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
-            # if item_db_id:
-            #     st.info(f"🛠️ 部品・工具DB: {item_db_id[:8]}...")
-            #     st.info("ℹ️ 部品・工具DBの接続テストは実装予定")
-            # else:
-            #     st.warning("⚠️ 部品・工具DB: ID未設定")
-            #     st.info("💡 .streamlit/secrets.tomlにITEM_DB_IDを設定してください")
-        # else:
-        #     st.error("❌ Notionクライアント: 初期化失敗")
-        #     st.info("💡 notion-clientライブラリのインストールとAPIキーの確認が必要です")
-        
-    # else:
-    #     st.error("❌ Notion API: 未設定")
-    #     st.info("**設定方法**:")
-    #     st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
-    
-    # 知識ベース状況
-    st.markdown("#### 📚 知識ベース状況")
+            #         if rできｒうようi.markdown("#### 📚 知識ベース状況")
     knowledge_base = load_knowledge_base()
     if knowledge_base:
         st.success(f"✅ 知識ベース: 読み込み成功 ({len(knowledge_base)}件のファイル)")
@@ -2769,6 +2860,312 @@ def display_relation_improvement_guide():
         - 修理ケース→部品・工具: 必要なリソースの特定
         - 各方向のリレーション数を確認
         """)
+
+# 開発者モードの制御
+def is_developer_mode():
+    """開発者モードかどうかを判定"""
+    # セッション状態での認証確認（パスワード認証が必須）
+    if st.session_state.get("developer_authenticated", False):
+        return True
+    
+    # 環境変数やシークレットでの設定は参考情報として使用
+    # 実際の認証はセッション状態でのみ判定
+    return False
+
+def is_developer_mode_configured():
+    """開発者モードが設定されているかどうかを確認（認証状態は問わない）"""
+    # 環境変数から開発者モードを確認
+    dev_mode = os.getenv("DEVELOPER_MODE", "").lower()
+    if dev_mode in ["true", "1", "yes", "on"]:
+        return True
+    
+    # Streamlitシークレットから開発者モードを確認
+    dev_mode_secret = st.secrets.get("DEVELOPER_MODE", "").lower()
+    if dev_mode_secret in ["true", "1", "yes", "on"]:
+        return True
+    
+    return False
+
+def show_developer_auth():
+    """開発者認証UI"""
+    st.markdown("### 🔐 開発者認証")
+    st.info("詳細診断機能にアクセスするには開発者認証が必要です。")
+    
+    # 現在の設定状況を表示
+    st.markdown("#### 📋 現在の設定状況")
+    current_dev_mode = os.getenv("DEVELOPER_MODE") or st.secrets.get("DEVELOPER_MODE", "未設定")
+    current_dev_password = os.getenv("DEVELOPER_PASSWORD") or st.secrets.get("DEVELOPER_PASSWORD", "未設定")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**設定状況**: {current_dev_mode}")
+    with col2:
+        if current_dev_password != "未設定":
+            st.write(f"**パスワード**: {current_dev_password[:3]}***{current_dev_password[-1] if len(current_dev_password) > 3 else ''}")
+        else:
+            st.write("**パスワード**: 未設定")
+    
+    # 認証状況を表示
+    if st.session_state.get("developer_authenticated", False):
+        st.success("✅ **認証状況**: 認証済み")
+    else:
+        st.warning("⚠️ **認証状況**: 未認証")
+    
+    # パスワード入力
+    st.markdown("#### 🔑 認証")
+    password = st.text_input("開発者パスワード:", type="password", help="設定したパスワードを入力してください")
+    
+    # 環境変数またはシークレットからパスワードを取得
+    dev_password_env = os.getenv("DEVELOPER_PASSWORD", "")
+    dev_password_secret = st.secrets.get("DEVELOPER_PASSWORD", "")
+    dev_password = dev_password_env or dev_password_secret
+    
+    # パスワードの前処理（空白文字の削除）
+    if password:
+        password = password.strip()
+    if dev_password:
+        dev_password = dev_password.strip()
+    
+    # デバッグ情報を表示（パスワードは非表示）
+    st.write(f"**パスワード取得状況:**")
+    st.write(f"• 環境変数: {'設定済み' if dev_password_env else '未設定'}")
+    st.write(f"• シークレット: {'設定済み' if dev_password_secret else '未設定'}")
+    st.write(f"• 最終パスワード: {'設定済み' if dev_password else '未設定'}")
+    
+    # 追加のデバッグ情報
+    st.write(f"**詳細設定状況:**")
+    st.write(f"• 環境変数パスワード（最初の3文字）: '{dev_password_env[:3] if dev_password_env else 'なし'}...'")
+    st.write(f"• シークレットパスワード（最初の3文字）: '{dev_password_secret[:3] if dev_password_secret else 'なし'}...'")
+    st.write(f"• 最終パスワード（最初の3文字）: '{dev_password[:3] if dev_password else 'なし'}...'")
+    st.write(f"• パスワードの型（環境変数）: {type(dev_password_env)}")
+    st.write(f"• パスワードの型（シークレット）: {type(dev_password_secret)}")
+    st.write(f"• パスワードの型（最終）: {type(dev_password)}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔑 認証", type="primary"):
+            # 詳細なデバッグ情報を表示
+            st.write(f"**🔍 詳細デバッグ情報:**")
+            st.write(f"• 入力されたパスワード: '{password}' (長さ: {len(password) if password else 0})")
+            st.write(f"• 環境変数パスワード: '{dev_password_env}' (長さ: {len(dev_password_env) if dev_password_env else 0})")
+            st.write(f"• シークレットパスワード: '{dev_password_secret}' (長さ: {len(dev_password_secret) if dev_password_secret else 0})")
+            st.write(f"• 最終パスワード: '{dev_password}' (長さ: {len(dev_password) if dev_password else 0})")
+            st.write(f"• パスワード一致（環境変数）: {password == dev_password_env}")
+            st.write(f"• パスワード一致（シークレット）: {password == dev_password_secret}")
+            st.write(f"• パスワード一致（最終）: {password == dev_password}")
+            st.write(f"• 現在の認証状態: {st.session_state.get('developer_authenticated', False)}")
+            
+            if not dev_password:
+                st.error("❌ 開発者パスワードが設定されていません")
+                st.info("💡 下記の「📁 設定ファイルを自動作成」でパスワードを設定してください")
+            elif password and dev_password:
+                # 複数の比較方法を試す
+                password_clean = password.strip()
+                dev_password_clean = dev_password.strip()
+                
+                if (password == dev_password or 
+                    password_clean == dev_password_clean or
+                    password_clean == dev_password or
+                    password == dev_password_clean):
+                    
+                    st.session_state.developer_authenticated = True
+                    st.success("✅ 開発者認証が完了しました")
+                    st.info("🔧 詳細診断モードが有効になりました")
+                    st.balloons()  # 成功時の演出
+                    
+                    # 認証成功後のデバッグ情報
+                    st.write(f"**認証成功後の状態:**")
+                    st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
+                    st.write(f"• 開発者モード関数結果: {is_developer_mode()}")
+                    
+                    # 認証成功後は再読み込みせずに状態を維持
+                    st.stop()
+                else:
+                    st.error("❌ パスワードが正しくありません")
+                    st.info("💡 パスワードを確認してください")
+                    st.write(f"**期待されるパスワード**: `nre03851`")
+                    
+                    # 追加のデバッグ情報
+                    st.write(f"**🔍 認証失敗の詳細:**")
+                    st.write(f"• 入力パスワードの長さ: {len(password) if password else 0}")
+                    st.write(f"• 設定パスワードの長さ: {len(dev_password) if dev_password else 0}")
+                    st.write(f"• 入力パスワードの文字コード: {[ord(c) for c in password] if password else []}")
+                    st.write(f"• 設定パスワードの文字コード: {[ord(c) for c in dev_password] if dev_password else []}")
+                    st.write(f"• 完全一致チェック: {password == dev_password}")
+                    st.write(f"• 大文字小文字を無視した一致: {password.lower() == dev_password.lower() if dev_password else False}")
+
+    
+    with col2:
+        if st.button("🔄 設定を再読み込み"):
+            st.rerun()
+        
+        # 認証状態のリセットボタン
+        if st.button("🔓 認証をリセット", help="認証状態をクリアします"):
+            st.session_state.developer_authenticated = False
+            st.success("✅ 認証状態をリセットしました")
+            st.rerun()
+    
+    # 開発者モードの設定方法を表示
+    with st.expander("🔧 開発者モードの設定方法"):
+        st.markdown("""
+        ### 開発者モードを有効にする方法
+        
+        #### 方法1: UIから自動作成（推奨）
+        下記の「📁 設定ファイルを自動作成」を使用してください。
+        
+        #### 方法2: 環境変数で設定
+        ```bash
+        export DEVELOPER_MODE=true
+        export DEVELOPER_PASSWORD=your_password
+        ```
+        
+        #### 方法3: .streamlit/secrets.tomlで設定
+        ```toml
+        DEVELOPER_MODE = "true"
+        DEVELOPER_PASSWORD = "your_password"
+        ```
+        
+        #### 方法4: .envファイルで設定
+        ```
+        DEVELOPER_MODE=true
+        DEVELOPER_PASSWORD=your_password
+        ```
+        
+        #### 方法5: PowerShellで設定（Windows）
+        ```powershell
+        $env:DEVELOPER_MODE="true"
+        $env:DEVELOPER_PASSWORD="your_password"
+        ```
+        """)
+    
+    # 設定ファイル作成機能を表示
+    with st.expander("📁 設定ファイルを自動作成", expanded=True):
+        create_developer_config_files()
+
+def create_developer_config_files():
+    """開発者設定ファイルを作成するヘルパー機能"""
+    st.markdown("### 🔧 開発者設定ファイル作成")
+    
+    # 現在の設定状況を表示
+    st.info("📋 現在の設定状況:")
+    current_dev_mode = os.getenv("DEVELOPER_MODE") or st.secrets.get("DEVELOPER_MODE", "未設定")
+    st.write(f"• 開発者モード: {current_dev_mode}")
+    
+    # パスワード入力
+    st.markdown("#### 🔑 新しいパスワードを設定")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        new_password = st.text_input("新しい開発者パスワード:", type="password", help="6文字以上の安全なパスワードを入力してください")
+    
+    with col2:
+        confirm_password = st.text_input("パスワード確認:", type="password", help="同じパスワードを再入力してください")
+    
+    # パスワード強度チェック
+    if new_password:
+        strength = 0
+        if len(new_password) >= 6:
+            strength += 1
+        if any(c.isupper() for c in new_password):
+            strength += 1
+        if any(c.islower() for c in new_password):
+            strength += 1
+        if any(c.isdigit() for c in new_password):
+            strength += 1
+        if any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in new_password):
+            strength += 1
+        
+        strength_text = ["弱い", "普通", "良い", "強い", "非常に強い"][min(strength - 1, 4)]
+        strength_color = ["red", "orange", "yellow", "lightgreen", "green"][min(strength - 1, 4)]
+        
+        st.markdown(f"🔒 パスワード強度: :{strength_color}[{strength_text}] ({strength}/5)")
+    
+    # 設定ファイル作成ボタン
+    if st.button("📁 設定ファイルを作成", type="primary", help="開発者設定ファイルを自動作成します"):
+        if not new_password:
+            st.error("❌ パスワードを入力してください")
+            return
+        
+        if new_password != confirm_password:
+            st.error("❌ パスワードが一致しません")
+            return
+        
+        if len(new_password) < 6:
+            st.error("❌ パスワードは6文字以上で入力してください")
+            return
+        
+        try:
+            # .streamlit/secrets.tomlファイルを作成
+            os.makedirs(".streamlit", exist_ok=True)
+            
+            # 既存のsecrets.tomlファイルがある場合は読み込んで追加
+            existing_secrets = {}
+            if os.path.exists(".streamlit/secrets.toml"):
+                try:
+                    import toml
+                    with open(".streamlit/secrets.toml", "r", encoding="utf-8") as f:
+                        existing_secrets = toml.load(f)
+                    st.info("📄 既存の設定ファイルを読み込みました")
+                except Exception as e:
+                    st.warning(f"⚠️ 既存ファイルの読み込みに失敗: {str(e)}")
+            
+            # 開発者設定を追加
+            existing_secrets["DEVELOPER_MODE"] = "true"
+            existing_secrets["DEVELOPER_PASSWORD"] = new_password
+            
+            # ファイルに書き込み
+            with open(".streamlit/secrets.toml", "w", encoding="utf-8") as f:
+                import toml
+                toml.dump(existing_secrets, f)
+            
+            # .envファイルも作成
+            env_content = f'''# 開発者設定
+DEVELOPER_MODE=true
+DEVELOPER_PASSWORD={new_password}
+
+# 既存の設定があれば保持
+'''
+            
+            # 既存の.envファイルがある場合は読み込んで追加
+            if os.path.exists(".env"):
+                with open(".env", "r", encoding="utf-8") as f:
+                    existing_env = f.read()
+                if "DEVELOPER_MODE" not in existing_env:
+                    with open(".env", "a", encoding="utf-8") as f:
+                        f.write(f"\n# 開発者設定\nDEVELOPER_MODE=true\nDEVELOPER_PASSWORD={new_password}\n")
+                else:
+                    st.info("📄 既存の.envファイルに開発者設定を追加しました")
+            else:
+                with open(".env", "w", encoding="utf-8") as f:
+                    f.write(env_content)
+            
+            st.success("✅ 開発者設定ファイルが作成されました！")
+            
+            # 作成されたファイルの詳細を表示
+            with st.expander("📁 作成されたファイルの詳細"):
+                st.markdown("**1. .streamlit/secrets.toml**")
+                st.code(f'''DEVELOPER_MODE = "true"
+DEVELOPER_PASSWORD = "{new_password[:3]}***{new_password[-1] if len(new_password) > 3 else ''}"
+# その他の設定...''')
+                
+                st.markdown("**2. .env**")
+                st.code(f'''DEVELOPER_MODE=true
+DEVELOPER_PASSWORD={new_password[:3]}***{new_password[-1] if len(new_password) > 3 else ''}
+# その他の設定...''')
+            
+            st.warning("⚠️ **重要**: アプリケーションを再起動して設定を反映してください")
+            st.info("🔄 再起動方法:")
+            st.code("1. 現在のアプリケーションを停止（Ctrl+C）\n2. streamlit run enhanced_knowledge_base_app.py")
+            
+            # 即座に認証を試行
+            if st.button("🔑 今すぐ認証を試行"):
+                st.session_state.developer_authenticated = True
+                st.success("✅ 開発者認証が完了しました！")
+                st.rerun()
+            
+        except Exception as e:
+            st.error(f"❌ 設定ファイルの作成に失敗しました: {str(e)}")
+            st.info("💡 手動で設定ファイルを作成してください")
 
 if __name__ == "__main__":
     main()
