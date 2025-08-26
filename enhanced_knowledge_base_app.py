@@ -155,59 +155,19 @@ def initialize_notion_client():
         return None
 
 def load_notion_diagnostic_data():
-    """Notionから診断データを読み込み（改善版）"""
+    """Notionから診断データを読み込み（リレーション対応・改善版）"""
     client = initialize_notion_client()
     if not client:
-        st.error("❌ Notionクライアントの初期化に失敗しました")
-        st.info("💡 システム情報タブで接続状況を確認してください")
         return None
     
     try:
-        # データベースIDの取得（複数の設定方法に対応）
         node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
-        case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
-        item_db_id = st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
-        
         if not node_db_id:
-            st.error("❌ 診断フローDBのIDが設定されていません")
-            st.info("💡 解決方法:")
-            st.info("1. .streamlit/secrets.tomlにNODE_DB_IDを設定")
-            st.info("2. 環境変数NODE_DB_IDを設定")
-            st.info("3. NotionデータベースのIDを確認")
             return None
         
-        # st.info(f"🔍 診断フローDBに接続中... (ID: {node_db_id[:8]}...)")  # 非表示化
-
-        # Notionから診断フローデータを取得（改善されたエラーハンドリング）
-        try:
-            response = client.databases.query(database_id=node_db_id)
-            nodes = response.get("results", [])
-            
-            if not nodes:
-                st.warning("⚠️ 診断フローDBにデータがありません")
-                st.info("💡 Notionデータベースに診断ノードを追加してください")
-                return None
-                
-            # st.success(f"✅ 診断フローDBから{len(nodes)}件のノードを取得しました")  # 非表示化
-            
-        except Exception as e:
-            error_msg = str(e)
-            st.error(f"❌ 診断フローDBのクエリに失敗: {error_msg}")
-            
-            # エラーの種類に応じた解決方法を提示
-            if "not_found" in error_msg.lower() or "404" in error_msg:
-                st.info("💡 解決方法: データベースIDが間違っています")
-                st.info(f"   現在のID: {node_db_id}")
-                st.info("   NotionでデータベースのIDを確認してください")
-            elif "unauthorized" in error_msg.lower() or "401" in error_msg:
-                st.info("💡 解決方法: APIキーにデータベースへのアクセス権限がありません")
-                st.info("   Notion統合の設定でデータベースへのアクセスを許可してください")
-            elif "rate_limited" in error_msg.lower() or "429" in error_msg:
-                st.info("💡 解決方法: API制限に達しました。しばらく待ってから再試行してください")
-            else:
-                st.info("💡 解決方法: ネットワーク接続とAPIキーの権限を確認してください")
-            
-            return None
+        # Notionから診断ノードを取得
+        response = client.databases.query(database_id=node_db_id)
+        nodes = response.get("results", [])
         
         diagnostic_data = {
             "nodes": [],
@@ -217,13 +177,11 @@ def load_notion_diagnostic_data():
         for node in nodes:
             properties = node.get("properties", {})
             
-            # ノードの基本情報を抽出
             node_info = {
                 "id": node.get("id"),
                 "title": "",
                 "category": "",
                 "symptoms": [],
-                "next_nodes": [],
                 "related_cases": [],  # 関連する修理ケース
                 "related_items": []   # 関連する部品・工具
             }
@@ -243,7 +201,7 @@ def load_notion_diagnostic_data():
             if symptoms_prop.get("type") == "multi_select":
                 node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
             
-            # 関連修理ケースの抽出（リレーション対応）
+            # 関連修理ケースの抽出（リレーション対応・改善版）
             cases_prop = properties.get("関連修理ケース", {})
             if cases_prop.get("type") == "relation":
                 for relation in cases_prop.get("relation", []):
@@ -275,9 +233,10 @@ def load_notion_diagnostic_data():
                         
                         node_info["related_cases"].append(case_info)
                     except Exception as e:
-                        st.warning(f"修理ケース情報の取得に失敗: {e}")
+                        # エラーをログに記録するが、処理を継続
+                        print(f"修理ケース情報の取得に失敗: {e}")
             
-            # 関連部品・工具の抽出（リレーション対応）
+            # 関連部品・工具の抽出（リレーション対応・改善版）
             items_prop = properties.get("関連部品・工具", {})
             if items_prop.get("type") == "relation":
                 for relation in items_prop.get("relation", []):
@@ -315,7 +274,8 @@ def load_notion_diagnostic_data():
                         
                         node_info["related_items"].append(item_info)
                     except Exception as e:
-                        st.warning(f"部品・工具情報の取得に失敗: {e}")
+                        # エラーをログに記録するが、処理を継続
+                        print(f"部品・工具情報の取得に失敗: {e}")
             
             diagnostic_data["nodes"].append(node_info)
             
@@ -493,7 +453,7 @@ def perform_detailed_notion_test():
         return test_results
 
 def load_notion_repair_cases():
-    """Notionから修理ケースデータを読み込み（リレーション対応）"""
+    """Notionから修理ケースデータを読み込み（リレーション対応・改善版）"""
     client = initialize_notion_client()
     if not client:
         return []
@@ -544,7 +504,42 @@ def load_notion_repair_cases():
             if solution_prop.get("type") == "rich_text" and solution_prop.get("rich_text"):
                 case_info["solution"] = solution_prop["rich_text"][0].get("plain_text", "")
             
-            # 必要な部品の抽出（リレーション対応）
+            # 関連診断ノードの抽出（リレーション対応・改善版）
+            nodes_prop = properties.get("関連診断ノード", {})
+            if nodes_prop.get("type") == "relation":
+                for relation in nodes_prop.get("relation", []):
+                    try:
+                        node_response = client.pages.retrieve(page_id=relation["id"])
+                        node_properties = node_response.get("properties", {})
+                        
+                        node_info = {
+                            "id": relation["id"],
+                            "title": "",
+                            "category": "",
+                            "symptoms": []
+                        }
+                        
+                        # ノードタイトルの抽出
+                        title_prop = node_properties.get("タイトル", {})
+                        if title_prop.get("type") == "title" and title_prop.get("title"):
+                            node_info["title"] = title_prop["title"][0].get("plain_text", "")
+                        
+                        # カテゴリの抽出
+                        cat_prop = node_properties.get("カテゴリ", {})
+                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
+                            node_info["category"] = cat_prop["select"].get("name", "")
+                        
+                        # 症状の抽出
+                        symptoms_prop = node_properties.get("症状", {})
+                        if symptoms_prop.get("type") == "multi_select":
+                            node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
+                        
+                        case_info["related_nodes"].append(node_info)
+                    except Exception as e:
+                        # エラーをログに記録するが、処理を継続
+                        print(f"診断ノード情報の取得に失敗: {e}")
+            
+            # 必要な部品の抽出（リレーション対応・改善版）
             parts_prop = properties.get("必要な部品", {})
             if parts_prop.get("type") == "relation":
                 # リレーションから部品情報を取得
@@ -583,12 +578,13 @@ def load_notion_repair_cases():
                         
                         case_info["related_items"].append(item_info)
                     except Exception as e:
-                        st.warning(f"部品情報の取得に失敗: {e}")
+                        # エラーをログに記録するが、処理を継続
+                        print(f"部品情報の取得に失敗: {e}")
             elif parts_prop.get("type") == "multi_select":
                 # 従来のmulti_select形式
                 case_info["parts"] = [item.get("name", "") for item in parts_prop.get("multi_select", [])]
             
-            # 必要な工具の抽出（リレーション対応）
+            # 必要な工具の抽出（リレーション対応・改善版）
             tools_prop = properties.get("必要な工具", {})
             if tools_prop.get("type") == "relation":
                 # リレーションから工具情報を取得
@@ -597,7 +593,7 @@ def load_notion_repair_cases():
                         item_response = client.pages.retrieve(page_id=relation["id"])
                         item_properties = item_response.get("properties", {})
                         
-                        tool_info = {
+                        item_info = {
                             "id": relation["id"],
                             "name": "",
                             "category": "",
@@ -608,63 +604,30 @@ def load_notion_repair_cases():
                         # 工具名の抽出
                         name_prop = item_properties.get("名前", {})
                         if name_prop.get("type") == "title" and name_prop.get("title"):
-                            tool_info["name"] = name_prop["title"][0].get("plain_text", "")
+                            item_info["name"] = name_prop["title"][0].get("plain_text", "")
                         
                         # カテゴリの抽出
                         cat_prop = item_properties.get("カテゴリ", {})
                         if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            tool_info["category"] = cat_prop["select"].get("name", "")
+                            item_info["category"] = cat_prop["select"].get("name", "")
                         
                         # 価格の抽出
                         price_prop = item_properties.get("価格", {})
                         if price_prop.get("type") == "number":
-                            tool_info["price"] = str(price_prop.get("number", ""))
+                            item_info["price"] = str(price_prop.get("number", ""))
                         
                         # サプライヤーの抽出
                         supplier_prop = item_properties.get("サプライヤー", {})
                         if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
-                            tool_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
+                            item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
                         
-                        case_info["related_items"].append(tool_info)
+                        case_info["related_items"].append(item_info)
                     except Exception as e:
-                        st.warning(f"工具情報の取得に失敗: {e}")
+                        # エラーをログに記録するが、処理を継続
+                        print(f"工具情報の取得に失敗: {e}")
             elif tools_prop.get("type") == "multi_select":
                 # 従来のmulti_select形式
                 case_info["tools"] = [item.get("name", "") for item in tools_prop.get("multi_select", [])]
-            
-            # 関連診断ノードの抽出（リレーション対応）
-            nodes_prop = properties.get("関連診断ノード", {})
-            if nodes_prop.get("type") == "relation":
-                for relation in nodes_prop.get("relation", []):
-                    try:
-                        node_response = client.pages.retrieve(page_id=relation["id"])
-                        node_properties = node_response.get("properties", {})
-                        
-                        node_info = {
-                            "id": relation["id"],
-                            "title": "",
-                            "category": "",
-                            "symptoms": []
-                        }
-                        
-                        # ノードタイトルの抽出
-                        title_prop = node_properties.get("タイトル", {})
-                        if title_prop.get("type") == "title" and title_prop.get("title"):
-                            node_info["title"] = title_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = node_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            node_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 症状の抽出
-                        symptoms_prop = node_properties.get("症状", {})
-                        if symptoms_prop.get("type") == "multi_select":
-                            node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
-                        
-                        case_info["related_nodes"].append(node_info)
-                    except Exception as e:
-                        st.warning(f"診断ノード情報の取得に失敗: {e}")
             
             repair_cases.append(case_info)
         
@@ -1971,37 +1934,91 @@ def run_interactive_diagnostic(diagnostic_data, repair_cases):
                         st.markdown("## 📚 関連ブログ")
                         display_blog_links(blog_links, diagnosis_prompt)
 
+
 def run_detailed_diagnostic(diagnostic_data, repair_cases):
-    """詳細診断モード（リレーション活用版）"""
+    """詳細診断モード（リレーション活用版・改善版）"""
     st.markdown("### 🔍 詳細診断")
     st.markdown("NotionDBの3つのデータベースのリレーションを活用した詳細な診断を行います。")
     
-    # NotionDB接続エラーメッセージを非表示化（本番環境対応）
-    # if not diagnostic_data:
-    #     st.warning("NotionDBの診断データが利用できません。")
-    #     return
+    # リレーション統計の詳細分析
+    relation_stats = analyze_relation_statistics()
     
-    # リレーション統計の表示
+    # リレーション改善機能
+    st.markdown("#### 🔧 リレーション改善ツール")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔄 リレーション構造を確認・作成", type="primary"):
+            with st.spinner("リレーション構造を確認中..."):
+                success, message = create_relations_between_databases()
+                if success:
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
+    
+    with col2:
+        if st.button("📊 リレーション統計を更新"):
+            st.rerun()
+    
+    # リレーション統計の表示（改善版）
     st.markdown("#### 📈 データベースリレーション統計")
     
-    total_nodes = len(diagnostic_data.get("nodes", []))
-    total_cases = len(repair_cases)
-    
-    # リレーションを持つノードとケースの数を計算
-    nodes_with_relations = sum(1 for node in diagnostic_data.get("nodes", []) 
-                              if node.get("related_cases") or node.get("related_items"))
-    cases_with_relations = sum(1 for case in repair_cases 
-                              if case.get("related_nodes") or case.get("related_items"))
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("診断ノード", total_nodes, f"{nodes_with_relations}件にリレーション")
-    with col2:
-        st.metric("修理ケース", total_cases, f"{cases_with_relations}件にリレーション")
-    with col3:
-        # st.metric("リレーション活用率", 
-        #          f"{((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100):.1f}%")  # 非表示化
-        pass
+    if relation_stats:
+        total_nodes = relation_stats["total_nodes"]
+        total_cases = relation_stats["total_cases"]
+        nodes_with_relations = relation_stats["nodes_with_relations"]
+        cases_with_relations = relation_stats["cases_with_relations"]
+        total_relations = relation_stats["total_relations"]
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("診断ノード", total_nodes, f"{nodes_with_relations}件にリレーション")
+        with col2:
+            st.metric("修理ケース", total_cases, f"{cases_with_relations}件にリレーション")
+        with col3:
+            st.metric("総リレーション数", total_relations)
+        with col4:
+            if total_nodes + total_cases > 0:
+                utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
+                st.metric("リレーション活用率", f"{utilization_rate:.1f}%")
+        
+        # 詳細なリレーション分析
+        st.markdown("#### 📊 リレーション詳細分析")
+        details = relation_stats["relation_details"]
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**診断ノードからのリレーション**")
+            st.write(f"• 修理ケースへのリレーション: {details['node_to_case']}件")
+            st.write(f"• 部品・工具へのリレーション: {details['node_to_item']}件")
+        
+        with col2:
+            st.markdown("**修理ケースからのリレーション**")
+            st.write(f"• 診断ノードへのリレーション: {details['case_to_node']}件")
+            st.write(f"• 部品・工具へのリレーション: {details['case_to_item']}件")
+        
+            # リレーション改善提案
+    if utilization_rate < 50:
+        st.warning("⚠️ リレーション活用率が低いです。データベース間の関連付けを強化することをお勧めします。")
+        st.info("💡 改善方法:")
+        st.info("1. 診断ノードと修理ケースの関連付けを追加")
+        st.info("2. 部品・工具データベースとの関連付けを設定")
+        st.info("3. 既存データの手動関連付けを実施")
+        
+        # リレーション改善機能の表示
+        create_relation_suggestion_ui()
+        display_relation_improvement_guide()
+    else:
+        st.warning("⚠️ リレーション統計の取得に失敗しました")
+        total_nodes = len(diagnostic_data.get("nodes", [])) if diagnostic_data else 0
+        total_cases = len(repair_cases) if repair_cases else 0
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("診断ノード", total_nodes)
+        with col2:
+            st.metric("修理ケース", total_cases)
     
     # 診断フローの表示（リレーション情報付き）
     if diagnostic_data.get("nodes"):
@@ -2447,6 +2464,310 @@ NOTION_API_KEY = "ntn_your_api_key_here"
 NODE_DB_ID = "your_diagnostic_db_id"
 CASE_DB_ID = "your_repair_case_db_id"
 ITEM_DB_ID = "your_items_db_id"
+        """)
+
+def create_relations_between_databases():
+    """データベース間のリレーションを作成・改善する機能"""
+    client = initialize_notion_client()
+    if not client:
+        return False, "Notionクライアントの初期化に失敗"
+    
+    try:
+        # データベースIDの取得
+        node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
+        case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
+        item_db_id = st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
+        
+        if not all([node_db_id, case_db_id]):
+            return False, "必要なデータベースIDが設定されていません"
+        
+        # データベースの構造を確認
+        node_db = client.databases.retrieve(database_id=node_db_id)
+        case_db = client.databases.retrieve(database_id=case_db_id)
+        
+        # リレーションプロパティの確認と作成
+        relations_created = 0
+        
+        # 診断ノードDBに修理ケースリレーションを追加
+        node_properties = node_db.get("properties", {})
+        if "関連修理ケース" not in node_properties:
+            try:
+                client.databases.update(
+                    database_id=node_db_id,
+                    properties={
+                        "関連修理ケース": {
+                            "relation": {
+                                "database_id": case_db_id,
+                                "type": "single_property",
+                                "single_property": {}
+                            }
+                        }
+                    }
+                )
+                relations_created += 1
+            except Exception as e:
+                print(f"診断ノードDBのリレーション作成に失敗: {e}")
+        
+        # 診断ノードDBに部品・工具リレーションを追加
+        if item_db_id and "関連部品・工具" not in node_properties:
+            try:
+                client.databases.update(
+                    database_id=node_db_id,
+                    properties={
+                        "関連部品・工具": {
+                            "relation": {
+                                "database_id": item_db_id,
+                                "type": "single_property",
+                                "single_property": {}
+                            }
+                        }
+                    }
+                )
+                relations_created += 1
+            except Exception as e:
+                print(f"診断ノードDBの部品リレーション作成に失敗: {e}")
+        
+        # 修理ケースDBに診断ノードリレーションを追加
+        case_properties = case_db.get("properties", {})
+        if "関連診断ノード" not in case_properties:
+            try:
+                client.databases.update(
+                    database_id=case_db_id,
+                    properties={
+                        "関連診断ノード": {
+                            "relation": {
+                                "database_id": node_db_id,
+                                "type": "single_property",
+                                "single_property": {}
+                            }
+                        }
+                    }
+                )
+                relations_created += 1
+            except Exception as e:
+                print(f"修理ケースDBのリレーション作成に失敗: {e}")
+        
+        # 修理ケースDBに部品・工具リレーションを追加
+        if item_db_id and "必要な部品" not in case_properties:
+            try:
+                client.databases.update(
+                    database_id=case_db_id,
+                    properties={
+                        "必要な部品": {
+                            "relation": {
+                                "database_id": item_db_id,
+                                "type": "single_property",
+                                "single_property": {}
+                            }
+                        }
+                    }
+                )
+                relations_created += 1
+            except Exception as e:
+                print(f"修理ケースDBの部品リレーション作成に失敗: {e}")
+        
+        if item_db_id and "必要な工具" not in case_properties:
+            try:
+                client.databases.update(
+                    database_id=case_db_id,
+                    properties={
+                        "必要な工具": {
+                            "relation": {
+                                "database_id": item_db_id,
+                                "type": "single_property",
+                                "single_property": {}
+                            }
+                        }
+                    }
+                )
+                relations_created += 1
+            except Exception as e:
+                print(f"修理ケースDBの工具リレーション作成に失敗: {e}")
+        
+        return True, f"{relations_created}件のリレーションを作成しました"
+        
+    except Exception as e:
+        return False, f"リレーション作成に失敗: {e}"
+
+def analyze_relation_statistics():
+    """リレーション統計の詳細分析"""
+    diagnostic_data = load_notion_diagnostic_data()
+    repair_cases = load_notion_repair_cases()
+    
+    if not diagnostic_data or not repair_cases:
+        return None
+    
+    stats = {
+        "total_nodes": len(diagnostic_data.get("nodes", [])),
+        "total_cases": len(repair_cases),
+        "nodes_with_relations": 0,
+        "cases_with_relations": 0,
+        "total_relations": 0,
+        "relation_details": {
+            "node_to_case": 0,
+            "node_to_item": 0,
+            "case_to_node": 0,
+            "case_to_item": 0
+        }
+    }
+    
+    # 診断ノードのリレーション分析
+    for node in diagnostic_data.get("nodes", []):
+        case_relations = len(node.get("related_cases", []))
+        item_relations = len(node.get("related_items", []))
+        
+        if case_relations > 0 or item_relations > 0:
+            stats["nodes_with_relations"] += 1
+        
+        stats["relation_details"]["node_to_case"] += case_relations
+        stats["relation_details"]["node_to_item"] += item_relations
+        stats["total_relations"] += case_relations + item_relations
+    
+    # 修理ケースのリレーション分析
+    for case in repair_cases:
+        node_relations = len(case.get("related_nodes", []))
+        item_relations = len(case.get("related_items", []))
+        
+        if node_relations > 0 or item_relations > 0:
+            stats["cases_with_relations"] += 1
+        
+        stats["relation_details"]["case_to_node"] += node_relations
+        stats["relation_details"]["case_to_item"] += item_relations
+        stats["total_relations"] += node_relations + item_relations
+    
+    return stats
+
+def suggest_relations_based_on_content():
+    """コンテンツベースでリレーションを提案する機能"""
+    diagnostic_data = load_notion_diagnostic_data()
+    repair_cases = load_notion_repair_cases()
+    
+    if not diagnostic_data or not repair_cases:
+        return []
+    
+    suggestions = []
+    
+    # 診断ノードと修理ケースの関連性を分析
+    for node in diagnostic_data.get("nodes", []):
+        node_symptoms = set(node.get("symptoms", []))
+        node_title = node.get("title", "").lower()
+        
+        for case in repair_cases:
+            case_symptoms = set(case.get("symptoms", []))
+            case_title = case.get("title", "").lower()
+            case_solution = case.get("solution", "").lower()
+            
+            # 症状の重複度を計算
+            symptom_overlap = len(node_symptoms.intersection(case_symptoms))
+            title_similarity = any(word in case_title for word in node_title.split()) or any(word in node_title for word in case_title.split())
+            
+            # 関連性スコアを計算
+            relevance_score = symptom_overlap * 2 + (1 if title_similarity else 0)
+            
+            if relevance_score >= 2:  # 閾値以上の場合に提案
+                suggestions.append({
+                    "type": "node_to_case",
+                    "source_id": node["id"],
+                    "source_title": node["title"],
+                    "target_id": case["id"],
+                    "target_title": case["title"],
+                    "relevance_score": relevance_score,
+                    "reason": f"症状の重複: {symptom_overlap}件, タイトル類似性: {'あり' if title_similarity else 'なし'}"
+                })
+    
+    # スコアでソート
+    suggestions.sort(key=lambda x: x["relevance_score"], reverse=True)
+    
+    return suggestions[:20]  # 上位20件を返す
+
+def create_relation_suggestion_ui():
+    """リレーション提案UI"""
+    st.markdown("#### 🤖 AIリレーション提案")
+    
+    if st.button("🔍 リレーション候補を分析"):
+        with st.spinner("コンテンツを分析中..."):
+            suggestions = suggest_relations_based_on_content()
+            
+            if suggestions:
+                st.success(f"✅ {len(suggestions)}件のリレーション候補を発見しました")
+                
+                # 提案の表示
+                for i, suggestion in enumerate(suggestions[:10]):  # 上位10件を表示
+                    with st.expander(f"提案 {i+1}: {suggestion['source_title']} → {suggestion['target_title']} (スコア: {suggestion['relevance_score']})"):
+                        st.write(f"**関連性理由**: {suggestion['reason']}")
+                        st.write(f"**ソース**: {suggestion['source_title']}")
+                        st.write(f"**ターゲット**: {suggestion['target_title']}")
+                        
+                        # 手動でリレーションを作成するボタン
+                        if st.button(f"🔗 リレーションを作成 ({i+1})", key=f"create_relation_{i}"):
+                            st.info("💡 この機能は手動でNotionでリレーションを設定する必要があります")
+                            st.info(f"1. {suggestion['source_title']}を開く")
+                            st.info(f"2. 関連修理ケースフィールドに{suggestion['target_title']}を追加")
+            else:
+                st.warning("⚠️ リレーション候補が見つかりませんでした")
+                st.info("💡 データの内容を充実させてから再試行してください")
+
+def display_relation_improvement_guide():
+    """リレーション改善ガイドの表示"""
+    st.markdown("#### 📚 リレーション改善ガイド")
+    
+    with st.expander("🔧 リレーション設定方法"):
+        st.markdown("""
+        ### Notionでのリレーション設定手順
+        
+        #### 1. データベースプロパティの追加
+        - 診断ノードDBに「関連修理ケース」プロパティを追加（リレーション型）
+        - 修理ケースDBに「関連診断ノード」プロパティを追加（リレーション型）
+        - 両DBに「関連部品・工具」プロパティを追加（リレーション型）
+        
+        #### 2. リレーションの設定
+        - プロパティタイプ: リレーション
+        - 関連データベース: 対応するDBを選択
+        - リレーションタイプ: 単一プロパティ
+        
+        #### 3. データの関連付け
+        - 各エントリを開く
+        - リレーションフィールドで関連するエントリを選択
+        - 保存して関連付けを完了
+        """)
+    
+    with st.expander("🎯 リレーション活用のベストプラクティス"):
+        st.markdown("""
+        ### 効果的なリレーション活用方法
+        
+        #### 1. 症状ベースの関連付け
+        - 同じ症状を持つ診断ノードと修理ケースを関連付け
+        - 症状の重複度が高いものを優先
+        
+        #### 2. カテゴリベースの関連付け
+        - 同じカテゴリの診断ノードと修理ケースを関連付け
+        - 部品・工具もカテゴリでグループ化
+        
+        #### 3. 解決方法ベースの関連付け
+        - 類似の解決方法を持つケースを関連付け
+        - 必要な部品・工具も共通化
+        
+        #### 4. 定期的な見直し
+        - リレーション活用率を定期的にチェック
+        - 新しい関連性を発見したら追加
+        """)
+    
+    with st.expander("📊 リレーション統計の見方"):
+        st.markdown("""
+        ### リレーション統計の指標
+        
+        #### 1. リレーション活用率
+        - 目標: 50%以上
+        - 現在の値が低い場合は改善が必要
+        
+        #### 2. 総リレーション数
+        - データベース間の関連付けの総数
+        - 多いほど詳細な診断が可能
+        
+        #### 3. 詳細分析
+        - 診断ノード→修理ケース: 症状から解決策への関連
+        - 修理ケース→部品・工具: 必要なリソースの特定
+        - 各方向のリレーション数を確認
         """)
 
 if __name__ == "__main__":
