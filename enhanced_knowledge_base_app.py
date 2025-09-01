@@ -342,7 +342,7 @@ def load_notion_diagnostic_data():
             st.session_state.diagnostic_data_cache = diagnostic_data
             st.session_state.cache_timestamp = time.time()
             
-            st.success(f"✅ 診断データの読み込み完了: {len(diagnostic_data['nodes'])}件")
+            # st.success(f"✅ 診断データの読み込み完了: {len(diagnostic_data['nodes'])}件")  # 非表示化
             
             return diagnostic_data
         
@@ -535,7 +535,7 @@ def load_notion_repair_cases():
         return []
     
     try:
-        with st.spinner("📡 NotionDBから修理ケースデータを読み込み中..."):
+        with st.spinner(""):  # 修理ケースデータ読み込み中のメッセージを非表示化
             case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
             if not case_db_id:
                 return []
@@ -728,7 +728,7 @@ def load_notion_repair_cases():
             st.session_state.repair_cases_cache = repair_cases
             st.session_state.cache_timestamp = time.time()
             
-            st.success(f"✅ 修理ケースデータの読み込み完了: {len(repair_cases)}件")
+            # st.success(f"✅ 修理ケースデータの読み込み完了: {len(repair_cases)}件")  # 非表示化
             
             return repair_cases
         
@@ -1718,25 +1718,22 @@ def run_diagnostic_flow():
     """対話式症状診断（NotionDB連携版）"""
     st.subheader("🔍 対話式症状診断")
     
-    # デバッグ情報を追加
-    st.info("🔍 デバッグ情報: 対話式診断フローが開始されました")
-    
-    # NotionDBの接続状況を確認
+    # NotionDBの接続状況を確認（デバッグ情報を非表示化）
     notion_status = "❌ 未接続"
     diagnostic_data = None
     repair_cases = []
     
     if notion_api_key:
         try:
-            st.info("📡 NotionDBからデータを読み込み中...")
+            # st.info("📡 NotionDBからデータを読み込み中...")  # 非表示化
             diagnostic_data = load_notion_diagnostic_data()
             repair_cases = load_notion_repair_cases()
             if diagnostic_data or repair_cases:
                 notion_status = "✅ 接続済み"
-                st.success(f"✅ NotionDBからデータを読み込みました")
-                st.info(f"• 診断ノード: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")
-                st.info(f"• 開始ノード: {len(diagnostic_data.get('start_nodes', [])) if diagnostic_data else 0}件")
-                st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")
+                # st.success(f"✅ NotionDBからデータを読み込みました")  # 非表示化
+                # st.info(f"• 診断ノード: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")  # 非表示化
+                # st.info(f"• 開始ノード: {len(diagnostic_data.get('start_nodes', [])) if diagnostic_data else 0}件")  # 非表示化
+                # st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")  # 非表示化
             else:
                 notion_status = "⚠️ データなし"
                 st.warning("⚠️ NotionDBからデータが読み込めませんでした")
@@ -1755,7 +1752,7 @@ def run_diagnostic_flow():
             # サイドバーに開発者モード機能を表示
             st.sidebar.markdown("---")
             st.sidebar.markdown("### 🔧 開発者モード")
-        st.sidebar.success("🔧 開発者モード: 認証済み")
+        # st.sidebar.success("🔧 開発者モード: 認証済み")  # 非表示化
             
         col1, col2 = st.sidebar.columns(2)
         with col1:
@@ -1769,7 +1766,7 @@ def run_diagnostic_flow():
             # サイドバー非表示時はメイン画面に開発者モード機能を表示
             st.markdown("---")
             st.markdown("### 🔧 開発者モード")
-            st.success("🔧 開発者モード: 認証済み")
+            # st.success("🔧 開発者モード: 認証済み")  # 非表示化
             
             col1, col2 = st.columns(2)
             with col1:
@@ -1780,80 +1777,78 @@ def run_diagnostic_flow():
                 if st.button("🔄 更新", help="設定を再読み込みします"):
                     st.rerun()
     
-    # 接続状況を表示
-    st.info(f"**NotionDB接続状況**: {notion_status}")
+    # 接続状況を表示（デバッグ情報を非表示化）
+    # st.info(f"**NotionDB接続状況**: {notion_status}")  # 非表示化
     
-    # キャッシュ管理ボタン
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 データを再読み込み", help="キャッシュをクリアして最新データを取得します"):
-            clear_cache()
-            st.success("✅ キャッシュをクリアしました。データを再読み込みします。")
-            st.rerun()
+    # キャッシュ管理ボタン（非表示化）
+    # col1, col2 = st.columns(2)
+    # with col1:
+    #     if st.button("🔄 データを再読み込み", help="キャッシュをクリアして最新データを取得します"):
+    #         clear_cache()
+    #         st.success("✅ キャッシュをクリアしました。データを再読み込みします。")
+    #         st.rerun()
+    # 
+    # with col2:
+    #     if st.session_state.cache_timestamp:
+    #         cache_age = int(time.time() - st.session_state.cache_timestamp)
+    #         cache_minutes = cache_age // 60
+    #         cache_seconds = cache_age % 60
+    #         # st.info(f"📋 キャッシュ更新: {cache_minutes}分{cache_seconds}秒前")  # 非表示化
+    #     else:
+    #         # st.info("📋 キャッシュなし")  # 非表示化
+    #         pass
     
-    with col2:
-        if st.session_state.cache_timestamp:
-            cache_age = int(time.time() - st.session_state.cache_timestamp)
-            cache_minutes = cache_age // 60
-            cache_seconds = cache_age % 60
-            st.info(f"📋 キャッシュ更新: {cache_minutes}分{cache_seconds}秒前")
-        else:
-            st.info("📋 キャッシュなし")
+    # 診断モードの選択（詳細診断を非表示化）
+    diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断"]
     
-    # 診断モードの選択（開発者モード対応）
-    if is_developer_mode():
-        diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断", "🔍 詳細診断"]
-    else:
-        diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断"]
-    
-    st.info(f"🔍 利用可能な診断モード: {', '.join(diagnostic_options)}")
+    # st.info(f"🔍 利用可能な診断モード: {', '.join(diagnostic_options)}")  # 非表示化
     
     diagnostic_mode = st.radio(
         "診断モードを選択してください:",
         diagnostic_options
     )
     
-    st.info(f"🎯 選択された診断モード: {diagnostic_mode}")
+    # st.info(f"🎯 選択された診断モード: {diagnostic_mode}")  # 非表示化
     
-    # デバッグ情報を追加
-    if st.checkbox("🔍 デバッグ情報を表示"):
-        st.write("**デバッグ情報:**")
-        st.write(f"• 選択されたモード: {diagnostic_mode}")
-        st.write(f"• 開発者モード関数結果: {is_developer_mode()}")
-        st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
-        st.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
-        st.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
-        
-        # 認証状態の詳細情報
-        st.write("**認証状態の詳細:**")
-        st.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
-        st.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
-        
-        # 認証リセットボタン
-        if st.button("🔄 認証状態をリセット"):
-            st.session_state.developer_authenticated = False
-            st.success("認証状態をリセットしました")
-            st.rerun()
+    # デバッグ情報を追加（非表示化）
+    # if st.checkbox("🔍 デバッグ情報を表示"):
+    #     st.write("**デバッグ情報:**")
+    #     st.write(f"• 選択されたモード: {diagnostic_mode}")
+    #     st.write(f"• 開発者モード関数結果: {is_developer_mode()}")
+    #     st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
+    #     st.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
+    #     st.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
+    #     
+    #     # 認証状態の詳細情報
+    #     st.write("**認証状態の詳細:**")
+    #     st.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
+    #     st.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
+    #     
+    #     # 認証リセットボタン
+    #     if st.button("🔄 認証状態をリセット"):
+    #         st.session_state.developer_authenticated = False
+    #         st.success("認証状態をリセットしました")
+    #         st.rerun()
     
-    st.info(f"🚀 診断モード '{diagnostic_mode}' の処理を開始します...")
+    # st.info(f"🚀 診断モード '{diagnostic_mode}' の処理を開始します...")  # 非表示化
     
     if diagnostic_mode == "🤖 AI診断（推奨）":
-        st.success("✅ AI診断モードを開始します")
+        # st.success("✅ AI診断モードを開始します")  # 非表示化
         run_ai_diagnostic(diagnostic_data, repair_cases)
     elif diagnostic_mode == "📋 対話式診断":
-        st.success("✅ 対話式診断モードを開始します")
+        # st.success("✅ 対話式診断モードを開始します")  # 非表示化
         run_interactive_diagnostic(diagnostic_data, repair_cases)
-    elif diagnostic_mode == "🔍 詳細診断":
-        if is_developer_mode():
-            st.success("✅ 開発者認証済み - 詳細診断を開始します")
-            run_detailed_diagnostic(diagnostic_data, repair_cases)
-        else:
-            st.error("❌ 詳細診断には開発者認証が必要です")
-            if st.session_state.get('sidebar_visible', True):
-                st.info("💡 サイドバーの「🔐 開発者認証」ボタンから認証してください")
-            else:
-                st.info("💡 上記の「🔐 開発者認証」ボタンから認証してください")
-            show_developer_auth()
+    # elif diagnostic_mode == "🔍 詳細診断":  # 詳細診断を非表示化
+    #     if is_developer_mode():
+    #         # st.success("✅ 開発者認証済み - 詳細診断を開始します")  # 非表示化
+    #         run_detailed_diagnostic(diagnostic_data, repair_cases)
+    #     else:
+    #         st.error("❌ 詳細診断には開発者認証が必要です")
+    #         if st.session_state.get('sidebar_visible', True):
+    #         st.info("💡 サイドバーの「🔐 開発者認証」ボタンから認証してください")
+    #         else:
+    #         st.info("💡 上記の「🔐 開発者認証」ボタンから認証してください")
+    #         show_developer_auth()
     else:
         st.error(f"❌ 未知の診断モード: {diagnostic_mode}")
         st.info("💡 診断モードを正しく選択してください")
@@ -2150,157 +2145,168 @@ def run_interactive_diagnostic(diagnostic_data, repair_cases):
                         display_blog_links(blog_links, diagnosis_prompt)
 
 
-def run_detailed_diagnostic(diagnostic_data, repair_cases):
-    """詳細診断モード（リレーション活用版・改善版）"""
-    st.markdown("### 🔍 詳細診断")
-    st.markdown("NotionDBの3つのデータベースのリレーションを活用した詳細な診断を行います。")
-    
-    # デバッグ情報を追加（非表示化）
-    # st.info(f"🔧 詳細診断モードが開始されました")
-    # st.info(f"• 認証状態: {st.session_state.get('developer_authenticated', False)}")
-    # st.info(f"• 診断データ: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")
-    # st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")
-    
-    # リレーション統計の詳細分析
-    relation_stats = analyze_relation_statistics()
-    
-    # リレーション改善機能
-    st.markdown("#### 🔧 リレーション改善ツール")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🔄 リレーション構造を確認・作成", type="primary"):
-            with st.spinner("リレーション構造を確認中..."):
-                success, message = create_relations_between_databases()
-                if success:
-                    st.success(message)
-                    st.rerun()
-                else:
-                    st.error(message)
-    
-    with col2:
-        if st.button("📊 リレーション統計を更新"):
-            st.rerun()
-    
-    # リレーション統計の表示（改善版）
-    st.markdown("#### 📈 データベースリレーション統計")
-    
-    if relation_stats:
-        total_nodes = relation_stats["total_nodes"]
-        total_cases = relation_stats["total_cases"]
-        nodes_with_relations = relation_stats["nodes_with_relations"]
-        cases_with_relations = relation_stats["cases_with_relations"]
-        total_relations = relation_stats["total_relations"]
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("診断ノード", total_nodes, f"{nodes_with_relations}件にリレーション")
-        with col2:
-            st.metric("修理ケース", total_cases, f"{cases_with_relations}件にリレーション")
-        with col3:
-            st.metric("総リレーション数", total_relations)
-        with col4:
-            if total_nodes + total_cases > 0:
-                utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
-                st.metric("リレーション活用率", f"{utilization_rate:.1f}%")
-        
-        # 詳細なリレーション分析
-        st.markdown("#### 📊 リレーション詳細分析")
-        details = relation_stats["relation_details"]
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**診断ノードからのリレーション**")
-            st.write(f"• 修理ケースへのリレーション: {details['node_to_case']}件")
-            st.write(f"• 部品・工具へのリレーション: {details['node_to_item']}件")
-        
-        with col2:
-            st.markdown("**修理ケースからのリレーション**")
-            st.write(f"• 診断ノードへのリレーション: {details['case_to_node']}件")
-            st.write(f"• 部品・工具へのリレーション: {details['case_to_item']}件")
-        
-        # リレーション改善提案
-        if total_nodes + total_cases > 0:
-            utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
-            
-            if utilization_rate < 50:
-                st.warning("⚠️ リレーション活用率が低いです。データベース間の関連付けを強化することをお勧めします。")
-                st.info("💡 改善方法:")
-                st.info("1. 診断ノードと修理ケースの関連付けを追加")
-                st.info("2. 部品・工具データベースとの関連付けを設定")
-                st.info("3. 既存データの手動関連付けを実施")
-                
-                # リレーション改善機能の表示
-                create_relation_suggestion_ui()
-                display_relation_improvement_guide()
-    else:
-        st.warning("⚠️ リレーション統計の取得に失敗しました")
-        total_nodes = len(diagnostic_data.get("nodes", [])) if diagnostic_data else 0
-        total_cases = len(repair_cases) if repair_cases else 0
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("診断ノード", total_nodes)
-        with col2:
-            st.metric("修理ケース", total_cases)
-    
-    # 診断フローの表示（リレーション情報付き）
-    if diagnostic_data.get("nodes"):
-        st.markdown("#### 📊 診断ノード（リレーション情報付き）")
-        for node in diagnostic_data["nodes"][:10]:  # 最初の10件を表示
-            relation_count = len(node.get("related_cases", [])) + len(node.get("related_items", []))
-            relation_badge = f"🔗 {relation_count}件のリレーション" if relation_count > 0 else "❌ リレーションなし"
-            
-            with st.expander(f"🔹 {node['title']} ({node['category']}) {relation_badge}"):
-                if node["symptoms"]:
-                    st.write("**症状**:", ", ".join(node["symptoms"]))
-                
-                # 関連修理ケースの表示
-                if node.get("related_cases"):
-                    st.write("**関連修理ケース**:")
-                    for case in node["related_cases"][:3]:
-                        st.write(f"  • {case['title']}: {case['solution'][:100]}...")
-                
-                # 関連部品・工具の表示
-                if node.get("related_items"):
-                    st.write("**関連部品・工具**:")
-                    for item in node["related_items"][:3]:
-                        price_info = f" (¥{item['price']})" if item.get('price') else ""
-                        supplier_info = f" - {item['supplier']}" if item.get('supplier') else ""
-                        st.write(f"  • {item['name']}{price_info}{supplier_info}")
-    
-    # 修理ケースの表示（リレーション情報付き）
-    if repair_cases:
-        st.markdown("#### 🔧 修理ケース（リレーション情報付き）")
-        for case in repair_cases[:5]:  # 最初の5件を表示
-            relation_count = len(case.get("related_nodes", [])) + len(case.get("related_items", []))
-            relation_badge = f"🔗 {relation_count}件のリレーション" if relation_count > 0 else "❌ リレーションなし"
-            
-            with st.expander(f"🔧 {case['title']} ({case['category']}) {relation_badge}"):
-                if case["symptoms"]:
-                    st.write("**症状**:", ", ".join(case["symptoms"]))
-                if case["solution"]:
-                    st.write("**解決方法**:", case["solution"][:100] + "..." if len(case["solution"]) > 100 else case["solution"])
-                
-                # 関連診断ノードの表示
-                if case.get("related_nodes"):
-                    st.write("**関連診断ノード**:")
-                    for node in case["related_nodes"][:3]:
-                        st.write(f"  • {node['title']}: {', '.join(node['symptoms'])}")
-                
-                # 関連部品・工具の表示
-                if case.get("related_items"):
-                    st.write("**必要な部品・工具**:")
-                    for item in case["related_items"][:5]:
-                        price_info = f" (¥{item['price']})" if item.get('price') else ""
-                        supplier_info = f" - {item['supplier']}" if item.get('supplier') else ""
-                        st.write(f"  • {item['name']}{price_info}{supplier_info}")
-                
-                # 従来の形式（互換性のため）
-                if case.get("parts"):
-                    st.write("**必要な部品（従来形式）**:", ", ".join(case["parts"]))
-                if case.get("tools"):
-                    st.write("**必要な工具（従来形式）**:", ", ".join(case["tools"]))
+# def run_detailed_diagnostic(diagnostic_data, repair_cases):  # 詳細診断関数を非表示化
+    # """詳細診断モード（リレーション活用版・改善版）"""
+    # # st.markdown("### 🔍 詳細診断")  # 非表示化
+    # # st.markdown("NotionDBの3つのデータベースのリレーションを活用した詳細な診断を行います。")  # 非表示化
+    # 
+    # # デバッグ情報を追加（非表示化）
+    # # st.info(f"🔧 詳細診断モードが開始されました")
+    # # st.info(f"• 認証状態: {st.session_state.get('developer_authenticated', False)}")
+    # # st.info(f"• 診断データ: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")
+    # # st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")
+    # 
+    # # リレーション統計の詳細分析
+    # relation_stats = analyze_relation_statistics()
+    # 
+    # # リレーション改善機能
+    # st.markdown("#### 🔧 リレーション改善ツール")
+    # col1, col2 = st.columns(2)
+    # 
+    # with col1:
+    #     if st.button("🔄 リレーション構造を確認・作成", type="primary"):
+    #         with st.spinner("リレーション構造を確認中..."):
+    #         success, message = create_relations_between_databases()
+    #         if success:
+    #             st.success(message)
+    #             st.rerun()
+    #         else:
+    #             st.error(message)
+    # 
+    # with col2:
+    #     if st.button("📊 リレーション統計を更新"):
+    #         st.rerun()
+    # 
+    # # リレーション統計の表示（改善版）
+    # st.markdown("#### 📈 データベースリレーション統計")
+    # 
+    # if relation_stats:
+    #     total_nodes = relation_stats["total_nodes"]
+    #     total_cases = relation_stats["total_cases"]
+    #     nodes_with_relations = relation_stats["nodes_with_relations"]
+    #     cases_with_relations = relation_stats["cases_with_relations"]
+    #     total_relations = relation_stats["total_relations"]
+    #     
+    #     col1, col2, col3, col4 = st.columns(4)
+    #     with col1:
+    #         st.metric("診断ノード", total_nodes, f"{nodes_with_relations}件にリレーション")
+    #     with col2:
+    #         st.metric("修理ケース", total_cases, f"{cases_with_relations}件にリレーション")
+    #     with col3:
+    #         st.metric("総リレーション数", total_relations)
+    #     with col4:
+    #         if total_nodes + total_cases > 0:
+    #             utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
+    #             st.metric("リレーション活用率", f"{utilization_rate:.1f}%")
+    #         
+    #     # 詳細なリレーション分析
+    #     st.markdown("#### 📊 リレーション詳細分析")
+    #     details = relation_stats["relation_details"]
+    #     
+    #     col1, col2 = st.columns(2)
+    #     with col1:
+    #         st.markdown("**診断ノードからのリレーション**")
+    #         st.write(f"• 修理ケースへのリレーション: {details['node_to_case']}件")
+    #         st.write(f"• 部品・工具へのリレーション: {details['node_to_item']}件")
+    #     
+    #     with col2:
+    #         st.markdown("#### 📊 リレーション詳細分析")
+    #         details = relation_stats["relation_details"]
+    #         
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             st.markdown("**診断ノードからのリレーション**")
+    #             st.write(f"• 修理ケースへのリレーション: {details['node_to_case']}件")
+    #             st.write(f"• 部品・工具へのリレーション: {details['node_to_item']}件")
+    #         
+    #         with col2:
+    #             st.markdown("**修理ケースからのリレーション**")
+    #             st.write(f"• 診断ノードへのリレーション: {details['case_to_node']}件")
+    #             st.write(f"• 部品・工具へのリレーション: {details['case_to_item']}件")
+    #         
+    #         # リレーション改善提案
+    #         if total_nodes + total_cases > 0:
+    #             utilization_rate = ((nodes_with_relations + cases_with_relations) / (total_nodes + total_cases) * 100)
+    #             
+    #             if utilization_rate < 50:
+    #                 # st.warning("⚠️ リレーション活用率が低いです。データベース間の関連付けを強化することをお勧めします。")  # 非表示化
+    #                 # st.info("💡 改善方法:")  # 非表示化
+    #                 # st.info("1. 診断ノードと修理ケースの関連付けを追加")  # 非表示化
+    #                 # st.info("2. 部品・工具データベースとの関連付けを設定")  # 非表示化
+    #                 # st.info("3. 既存データの手動関連付けを実施")  # 非表示化
+    #                 
+    #                 # リレーション改善機能の表示
+    #                 create_relation_suggestion_ui()
+    #                 display_relation_improvement_guide()
+    #     else:
+    #         # st.warning("⚠️ リレーション統計の取得に失敗しました")  # 非表示化
+    #         pass
+    #         total_nodes = len(diagnostic_data.get("nodes", [])) if diagnostic_data else 0
+    #         total_cases = len(repair_cases) if repair_cases else 0
+    #         
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             st.metric("診断ノード", total_nodes)
+    #         with col2:
+    #             st.metric("修理ケース", total_cases)
+    #     
+    #     # 診断フローの表示（リレーション情報付き）
+    #     if diagnostic_data.get("nodes"):
+    #         st.markdown("#### 📊 診断ノード（リレーション情報付き）")
+    #         for node in diagnostic_data["nodes"][:10]:  # 最初の10件を表示
+    #             relation_count = len(node.get("related_cases", [])) + len(node.get("related_items", []))
+    #             relation_badge = f"🔗 {relation_count}件のリレーション" if relation_count > 0 else "❌ リレーションなし"
+    #             
+    #             with st.expander(f"🔹 {node['title']} ({node['category']}) {relation_badge}"):
+    #                 if node["symptoms"]:
+    #                     st.write("**症状**:", ", ".join(node["symptoms"]))
+    #                 
+    #                 # 関連修理ケースの表示
+    #                 if node.get("related_cases"):
+    #                 st.write("**関連修理ケース**:")
+    #                 for case in node["related_cases"][:3]:
+    #                     st.write(f"  • {case['title']}: {case['solution'][:100]}...")
+    #                 
+    #                 # 関連部品・工具の表示
+    #                 if node.get("related_items"):
+    #                 st.write("**関連部品・工具**:")
+    #                 for item in node["related_items"][:3]:
+    #                     price_info = f" (¥{item['price']})" if item.get('price') else ""
+    #                         supplier_info = f" - {item['supplier']}" if item.get('supplier') else ""
+    #                         st.write(f"  • {item['name']}{price_info}{supplier_info}")
+    #     
+    #     # 修理ケースの表示（リレーション情報付き）
+    #     if repair_cases:
+    #         st.markdown("#### 🔧 修理ケース（リレーション情報付き）")
+    #         for case in repair_cases[:5]:  # 最初の5件を表示
+    #             relation_count = len(case.get("related_nodes", [])) + len(case.get("related_items", []))
+    #             relation_badge = f"🔗 {relation_count}件のリレーション" if relation_count > 0 else "❌ リレーションなし"
+    #             
+    #             with st.expander(f"🔧 {case['title']} ({case['category']}) {relation_badge}"):
+    #                 if node["symptoms"]:
+    #                     st.write("**症状**:", ", ".join(node["symptoms"]))
+    #                 if case["solution"]:
+    #                     st.write("**解決方法**:", case["solution"][:100] + "..." if len(case["solution"]) > 100 else case["solution"])
+    #                 
+    #                 # 関連診断ノードの表示
+    #                 if case.get("related_nodes"):
+    #                     st.write("**関連診断ノード**:")
+    #                     for node in case["related_nodes"][:3]:
+    #                         st.write(f"  • {node['title']}: {', '.join(node['symptoms'])}")
+    #                 
+    #                 # 関連部品・工具の表示
+    #                 if case.get("related_items"):
+    #                     st.write("**必要な部品・工具**:")
+    #                     for item in case["related_items"][:5]:
+    #                         price_info = f" (¥{item['price']})" if item.get('price') else ""
+    #                         supplier_info = f" - {item['supplier']}" if item.get('supplier') else ""
+    #                         st.write(f"  • {item['name']}{price_info}{supplier_info}")
+    #                 
+    #                 # 従来の形式（互換性のため）
+    #                 if case.get("parts"):
+    #                     st.write("**必要な部品（従来形式）**:", ", ".join(case["parts"]))
+    #                 if case.get("tools"):
+    #                     st.write("**必要な工具（従来形式）**:", ", ".join(case["tools"]))
 
 def test_notion_connection():
     """NotionDB接続をテスト"""
@@ -2576,23 +2582,23 @@ def show_system_info():
                     if test_results["overall_success"]:
                         st.success("✅ 接続テスト完了")
                         
-                        # 各データベースの結果を表示
-                        for db_name, result in test_results["databases"].items():
-                            if result["status"] == "success":
-                                st.success(f"✅ {db_name}: {result['message']}")
-                            elif result["status"] == "error":
-                                st.error(f"❌ {db_name}: {result['message']}")
-                                if result.get("solution"):
-                                    st.info(f"💡 解決方法: {result['solution']}")
-                            else:
-                                st.warning(f"⚠️ {db_name}: {result['message']}")
+                        # 各データベースの結果を表示（デバッグ情報を非表示化）
+                        # for db_name, result in test_results["databases"].items():
+                        #     if result["status"] == "success":
+                        #         st.success(f"✅ {db_name}: {result['message']}")
+                        #     elif result["status"] == "error":
+                        #         st.error(f"❌ {db_name}: {result['message']}")
+                        #         if result.get("solution"):
+                        #             st.info(f"💡 解決方法: {result['solution']}")
+                        #     else:
+                        #         st.warning(f"⚠️ {db_name}: {result['message']}")
                         
-                        # 接続統計
-                        st.info(f"📊 接続統計: {test_results['success_count']}/{test_results['total_count']}個のデータベースに接続成功")
+                        # 接続統計（デバッグ情報を非表示化）
+                        # st.info(f"📊 接続統計: {test_results['success_count']}/{test_results['total_count']}個のデータベースに接続成功")
                         
                     else:
                         st.error("❌ 接続テスト失敗")
-                        st.info("💡 詳細なエラー情報を確認してください")
+                        # st.info("💡 詳細なエラー情報を確認してください")  # 非表示化
                         
                 except Exception as e:
                     st.error(f"❌ 接続テスト実行エラー: {str(e)}")
@@ -2602,7 +2608,7 @@ def show_system_info():
         # クライアント初期化テスト
         client = initialize_notion_client()
         if client:
-            st.success("✅ Notionクライアント: 初期化成功")
+            # st.success("✅ Notionクライアント: 初期化成功")  # 非表示化
             
             # 診断フローデータベース（非表示化）
             # node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
@@ -2632,70 +2638,81 @@ def show_system_info():
             #     st.info(f"🔧 修理ケースDB: {case_db_id[:8]}...")
             #     try:
             #         repair_cases = load_notion_repair_cases()
-            #         if rできｒうようi.markdown("#### 📚 知識ベース状況")
-    knowledge_base = load_knowledge_base()
-    if knowledge_base:
-        st.success(f"✅ 知識ベース: 読み込み成功 ({len(knowledge_base)}件のファイル)")
-        for category in list(knowledge_base.keys())[:5]:  # 最初の5件を表示
-            st.write(f"  - {category}")
-        if len(knowledge_base) > 5:
-            st.write(f"  - ... 他{len(knowledge_base) - 5}件")
-    else:
-        st.warning("⚠️ 知識ベース: ファイルが見つかりません")
+            #         if repair_cases:
+            #             st.success(f"✅ 修理ケースDB: 接続成功 ({len(repair_cases)}件のケース)")
+            #         else:
+            #             st.warning("⚠️ 修理ケースDB: データなしまたは接続失敗")
+            #     except Exception as e:
+            #         st.error(f"❌ 修理ケースDB: 接続失敗 - {str(e)}")
+            # else:
+            #     st.warning("⚠️ 修理ケースDB: ID未設定")
+            #     st.info("💡 .streamlit/secrets.tomlにCASE_DB_IDを設定してください")
     
-    # 環境変数一覧
-    st.markdown("#### 🌐 環境変数一覧")
-    env_vars = {
-        "OPENAI_API_KEY": openai_api_key,
-        "NOTION_API_KEY": notion_api_key,
-        "NODE_DB_ID": st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID"),
-        "CASE_DB_ID": st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID"),
-        "ITEM_DB_ID": st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
-    }
-    
-    for key, value in env_vars.items():
-        if value:
-            if "KEY" in key or "TOKEN" in key:
-                st.write(f"**{key}**: {value[:10]}...{value[-4:] if len(value) > 14 else ''}")
+            # 知識ベース状況
+            st.markdown("#### 📚 知識ベース状況")
+            knowledge_base = load_knowledge_base()
+            if knowledge_base:
+                st.success(f"✅ 知識ベース: 読み込み成功 ({len(knowledge_base)}件のファイル)")
+                for category in list(knowledge_base.keys())[:5]:  # 最初の5件を表示
+                    st.write(f"  - {category}")
+                if len(knowledge_base) > 5:
+                    st.write(f"  - ... 他{len(knowledge_base) - 5}件")
             else:
-                st.write(f"**{key}**: {value}")
-        else:
-            st.write(f"**{key}**: ❌ 未設定")
-    
-    # トラブルシューティングガイド
-    st.markdown("#### 🔧 トラブルシューティング")
-    with st.expander("NotionDB接続の問題を解決するには"):
-        st.markdown("""
-        **よくある問題と解決方法:**
-        
-        1. **APIキーが無効**
-           - Notionの設定ページで新しいAPIキーを生成
-           - `.streamlit/secrets.toml`を更新
-        
-        2. **データベースIDが間違っている**
-           - Notionでデータベースを開き、URLからIDを確認
-           - 例: `https://notion.so/workspace/256709bb38f18069a903f7ade8f76c73`
-        
-        3. **データベースへのアクセス権限がない**
-           - Notionでデータベースを開き、右上の「共有」ボタンをクリック
-           - 統合（Integration）にアクセス権限を付与
-        
-        4. **ライブラリがインストールされていない**
-           - ターミナルで実行: `pip install notion-client==2.2.1`
-        
-        5. **ネットワーク接続の問題**
-           - インターネット接続を確認
-           - ファイアウォールの設定を確認
-        """)
-        
-        st.markdown("**設定ファイルの例:**")
-        st.code("""
+                st.warning("⚠️ 知識ベース: ファイルが見つかりません")
+            
+            # 環境変数一覧
+            st.markdown("#### 🌐 環境変数一覧")
+            env_vars = {
+                "OPENAI_API_KEY": openai_api_key,
+                "NOTION_API_KEY": notion_api_key,
+                "NODE_DB_ID": st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID"),
+                "CASE_DB_ID": st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID"),
+                "ITEM_DB_ID": st.secrets.get("ITEM_DB_ID") or os.getenv("ITEM_DB_ID")
+            }
+            
+            for key, value in env_vars.items():
+                if value:
+                    if "KEY" in key or "TOKEN" in key:
+                        st.write(f"**{key}**: {value[:10]}...{value[-4:] if len(value) > 14 else ''}")
+                    else:
+                        st.write(f"**{key}**: {value}")
+                else:
+                    st.write(f"**{key}**: ❌ 未設定")
+            
+            # トラブルシューティングガイド
+            st.markdown("#### 🔧 トラブルシューティング")
+            with st.expander("NotionDB接続の問題を解決するには"):
+                st.markdown("""
+                **よくある問題と解決方法:**
+                
+                1. **APIキーが無効**
+                   - Notionの設定ページで新しいAPIキーを生成
+                   - `.streamlit/secrets.toml`を更新
+                
+                2. **データベースIDが間違っている**
+                   - Notionでデータベースを開き、URLからIDを確認
+                   - 例: `https://notion.so/workspace/256709bb38f18069a903f7ade8f76c73`
+                
+                3. **データベースへのアクセス権限がない**
+                   - Notionでデータベースを開き、右上の「共有」ボタンをクリック
+                   - 統合（Integration）にアクセス権限を付与
+                
+                4. **ライブラリがインストールされていない**
+                   - ターミナルで実行: `pip install notion-client==2.2.1`
+                
+                5. **ネットワーク接続の問題**
+                   - インターネット接続を確認
+                   - ファイアウォールの設定を確認
+                """)
+                
+                st.markdown("**設定ファイルの例:**")
+                st.code("""
 # .streamlit/secrets.toml
 NOTION_API_KEY = "ntn_your_api_key_here"
 NODE_DB_ID = "your_diagnostic_db_id"
 CASE_DB_ID = "your_repair_case_db_id"
 ITEM_DB_ID = "your_items_db_id"
-        """)
+                """)
 
 def create_relations_between_databases():
     """データベース間のリレーションを作成・改善する機能"""
