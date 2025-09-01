@@ -65,6 +65,22 @@ os.environ["OPENAI_API_KEY"] = openai_api_key
 # Notion APIキーの設定
 notion_api_key = st.secrets.get("NOTION_API_KEY") or st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_API_KEY") or os.getenv("NOTION_TOKEN")
 
+# キャッシュの有効期限（5分）
+CACHE_EXPIRY = 300  # 5分
+
+def is_cache_valid():
+    """キャッシュが有効かどうかをチェック"""
+    if not st.session_state.get('cache_timestamp'):
+        return False
+    return (time.time() - st.session_state.cache_timestamp) < CACHE_EXPIRY
+
+def clear_cache():
+    """キャッシュをクリア"""
+    st.session_state.diagnostic_data_cache = None
+    st.session_state.repair_cases_cache = None
+    st.session_state.knowledge_base_cache = None
+    st.session_state.cache_timestamp = None
+
 # NotionDB接続の初期化
 def initialize_notion_client():
     """Notionクライアントを初期化（改善版）"""
@@ -157,139 +173,192 @@ def initialize_notion_client():
         return None
 
 def load_notion_diagnostic_data():
-    """Notionから診断データを読み込み（リレーション対応・改善版）"""
+    """Notionから診断データを読み込み（リレーション対応・改善版・キャッシュ対応）"""
+    # キャッシュが有効な場合はキャッシュから返す
+    if st.session_state.diagnostic_data_cache and is_cache_valid():
+        st.info("📋 キャッシュから診断データを読み込みました（高速）")
+        return st.session_state.diagnostic_data_cache
+    
     client = initialize_notion_client()
     if not client:
         return None
     
     try:
-        node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
-        if not node_db_id:
-            return None
-        
-        # Notionから診断ノードを取得
-        response = client.databases.query(database_id=node_db_id)
-        nodes = response.get("results", [])
-        
-        diagnostic_data = {
-            "nodes": [],
-            "start_nodes": []
-        }
-        
-        for node in nodes:
-            properties = node.get("properties", {})
+        with st.spinner("📡 NotionDBから診断データを読み込み中..."):
+            node_db_id = st.secrets.get("NODE_DB_ID") or st.secrets.get("NOTION_DIAGNOSTIC_DB_ID") or os.getenv("NODE_DB_ID") or os.getenv("NOTION_DIAGNOSTIC_DB_ID")
+            if not node_db_id:
+                return None
             
-            node_info = {
-                "id": node.get("id"),
-                "title": "",
-                "category": "",
-                "symptoms": [],
-                "related_cases": [],  # 関連する修理ケース
-                "related_items": []   # 関連する部品・工具
+            # Notionから診断ノードを取得
+            response = client.databases.query(database_id=node_db_id)
+            nodes = response.get("results", [])
+            
+            diagnostic_data = {
+                "nodes": [],
+                "start_nodes": []
             }
             
-            # タイトルの抽出
-            title_prop = properties.get("タイトル", {})
-            if title_prop.get("type") == "title" and title_prop.get("title"):
-                node_info["title"] = title_prop["title"][0].get("plain_text", "")
+            # プログレスバーを表示
+            progress_bar = st.progress(0)
+            total_nodes = len(nodes)
             
-            # カテゴリの抽出
-            category_prop = properties.get("カテゴリ", {})
-            if category_prop.get("type") == "select" and category_prop.get("select"):
-                node_info["category"] = category_prop["select"].get("name", "")
+            for i, node in enumerate(nodes):
+                properties = node.get("properties", {})
+                
+                node_info = {
+                    "id": node.get("id"),
+                    "title": "",
+                    "category": "",
+                    "symptoms": [],
+                    "related_cases": [],  # 関連する修理ケース
+                    "related_items": []   # 関連する部品・工具
+                }
+                
+                # タイトルの抽出
+                title_prop = properties.get("ノードID", {})
+                if title_prop.get("type") == "title" and title_prop.get("title"):
+                    node_info["title"] = title_prop["title"][0].get("plain_text", "")
+                
+                # カテゴリの抽出
+                category_prop = properties.get("カテゴリ", {})
+                if category_prop.get("type") == "rich_text" and category_prop.get("rich_text"):
+                    rich_text_content = category_prop.get("rich_text", [])
+                    if rich_text_content:
+                        node_info["category"] = rich_text_content[0].get("plain_text", "")
+                
+                # 症状の抽出
+                symptoms_prop = properties.get("症状", {})
+                if symptoms_prop.get("type") == "rich_text" and symptoms_prop.get("rich_text"):
+                    rich_text_content = symptoms_prop.get("rich_text", [])
+                    if rich_text_content:
+                        # カンマ区切りの文字列を分割
+                        symptoms_text = rich_text_content[0].get("plain_text", "")
+                        node_info["symptoms"] = [s.strip() for s in symptoms_text.split(",") if s.strip()]
+                
+                # 修理ケースIDの抽出（terminal_case_idから変更）
+                repair_case_prop = properties.get("修理ケース", {})
+                repair_case_id = ""
+                if repair_case_prop.get("type") == "rich_text":
+                    rich_text_content = repair_case_prop.get("rich_text", [])
+                    if rich_text_content:
+                        repair_case_id = rich_text_content[0].get("plain_text", "")
+                node_info["repair_case_id"] = repair_case_id
+                
+                # 関連修理ケースの抽出（リレーション対応・改善版）
+                cases_prop = properties.get("関連修理ケース", {})
+                if cases_prop.get("type") == "relation":
+                    for relation in cases_prop.get("relation", []):
+                        try:
+                            case_response = client.pages.retrieve(page_id=relation["id"])
+                            case_properties = case_response.get("properties", {})
+                            
+                            case_info = {
+                                "id": relation["id"],
+                                "title": "",
+                                "category": "",
+                                "solution": ""
+                            }
+                            
+                            # ケースタイトルの抽出
+                            title_prop = case_properties.get("ケースID", {})
+                            if title_prop.get("type") == "title" and title_prop.get("title"):
+                                case_info["title"] = title_prop["title"][0].get("plain_text", "")
+                            
+                            # カテゴリの抽出（rich_text型に修正）
+                            cat_prop = case_properties.get("カテゴリ", {})
+                            if cat_prop.get("type") == "rich_text" and cat_prop.get("rich_text"):
+                                rich_text_content = cat_prop.get("rich_text", [])
+                                if rich_text_content:
+                                    case_info["category"] = rich_text_content[0].get("plain_text", "")
+                            
+                            # 解決方法の抽出（修理手順に変更）
+                            solution_prop = case_properties.get("修理手順", {})
+                            if solution_prop.get("type") == "rich_text" and solution_prop.get("rich_text"):
+                                case_info["solution"] = solution_prop["rich_text"][0].get("plain_text", "")
+                            
+                            node_info["related_cases"].append(case_info)
+                        except Exception as e:
+                            # エラーをログに記録するが、処理を継続
+                            print(f"修理ケース情報の取得に失敗: {e}")
+                
+                # 関連部品・工具の抽出（リレーション対応・改善版）
+                items_prop = properties.get("関連部品・工具", {})
+                if items_prop.get("type") == "relation":
+                    for relation in items_prop.get("relation", []):
+                        try:
+                            item_response = client.pages.retrieve(page_id=relation["id"])
+                            item_properties = item_response.get("properties", {})
+                            
+                            item_info = {
+                                "id": relation["id"],
+                                "name": "",
+                                "category": "",
+                                "price": "",
+                                "supplier": ""
+                            }
+                            
+                            # アイテム名の抽出
+                            name_prop = item_properties.get("部品名", {})
+                            if name_prop.get("type") == "title" and name_prop.get("title"):
+                                item_info["name"] = name_prop["title"][0].get("plain_text", "")
+                            
+                            # カテゴリの抽出（rich_text型に修正）
+                            cat_prop = item_properties.get("カテゴリ", {})
+                            if cat_prop.get("type") == "rich_text" and cat_prop.get("rich_text"):
+                                rich_text_content = cat_prop.get("rich_text", [])
+                                if rich_text_content:
+                                    item_info["category"] = rich_text_content[0].get("plain_text", "")
+                            
+                            # 価格の抽出（rich_text型に修正）
+                            price_prop = item_properties.get("価格", {})
+                            if price_prop.get("type") == "rich_text" and price_prop.get("rich_text"):
+                                rich_text_content = price_prop.get("rich_text", [])
+                                if rich_text_content:
+                                    item_info["price"] = rich_text_content[0].get("plain_text", "")
+                            
+                            # サプライヤーの抽出（購入先に変更）
+                            supplier_prop = item_properties.get("購入先", {})
+                            if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
+                                item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
+                            
+                            node_info["related_items"].append(item_info)
+                        except Exception as e:
+                            # エラーをログに記録するが、処理を継続
+                            print(f"部品・工具情報の取得に失敗: {e}")
+                
+                diagnostic_data["nodes"].append(node_info)
+                
+                # 開始ノードの判定
+                if node_info["category"] == "開始":
+                    diagnostic_data["start_nodes"].append(node_info)
+                
+                # プログレスバーを更新
+                progress_bar.progress((i + 1) / total_nodes)
             
-            # 症状の抽出
-            symptoms_prop = properties.get("症状", {})
-            if symptoms_prop.get("type") == "multi_select":
-                node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
+            # プログレスバーを完了
+            progress_bar.progress(1.0)
             
-            # 関連修理ケースの抽出（リレーション対応・改善版）
-            cases_prop = properties.get("関連修理ケース", {})
-            if cases_prop.get("type") == "relation":
-                for relation in cases_prop.get("relation", []):
-                    try:
-                        case_response = client.pages.retrieve(page_id=relation["id"])
-                        case_properties = case_response.get("properties", {})
-                        
-                        case_info = {
-                            "id": relation["id"],
-                            "title": "",
-                            "category": "",
-                            "solution": ""
-                        }
-                        
-                        # ケースタイトルの抽出
-                        title_prop = case_properties.get("タイトル", {})
-                        if title_prop.get("type") == "title" and title_prop.get("title"):
-                            case_info["title"] = title_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = case_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            case_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 解決方法の抽出
-                        solution_prop = case_properties.get("解決方法", {})
-                        if solution_prop.get("type") == "rich_text" and solution_prop.get("rich_text"):
-                            case_info["solution"] = solution_prop["rich_text"][0].get("plain_text", "")
-                        
-                        node_info["related_cases"].append(case_info)
-                    except Exception as e:
-                        # エラーをログに記録するが、処理を継続
-                        print(f"修理ケース情報の取得に失敗: {e}")
+            # キャッシュに保存
+            st.session_state.diagnostic_data_cache = diagnostic_data
+            st.session_state.cache_timestamp = time.time()
             
-            # 関連部品・工具の抽出（リレーション対応・改善版）
-            items_prop = properties.get("関連部品・工具", {})
-            if items_prop.get("type") == "relation":
-                for relation in items_prop.get("relation", []):
-                    try:
-                        item_response = client.pages.retrieve(page_id=relation["id"])
-                        item_properties = item_response.get("properties", {})
-                        
-                        item_info = {
-                            "id": relation["id"],
-                            "name": "",
-                            "category": "",
-                            "price": "",
-                            "supplier": ""
-                        }
-                        
-                        # アイテム名の抽出
-                        name_prop = item_properties.get("名前", {})
-                        if name_prop.get("type") == "title" and name_prop.get("title"):
-                            item_info["name"] = name_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = item_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            item_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 価格の抽出
-                        price_prop = item_properties.get("価格", {})
-                        if price_prop.get("type") == "number":
-                            item_info["price"] = str(price_prop.get("number", ""))
-                        
-                        # サプライヤーの抽出
-                        supplier_prop = item_properties.get("サプライヤー", {})
-                        if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
-                            item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
-                        
-                        node_info["related_items"].append(item_info)
-                    except Exception as e:
-                        # エラーをログに記録するが、処理を継続
-                        print(f"部品・工具情報の取得に失敗: {e}")
+            st.success(f"✅ 診断データの読み込み完了: {len(diagnostic_data['nodes'])}件")
             
-            diagnostic_data["nodes"].append(node_info)
-            
-            # 開始ノードの判定
-            if node_info["category"] == "開始":
-                diagnostic_data["start_nodes"].append(node_info)
-        
-        return diagnostic_data
+            return diagnostic_data
         
     except Exception as e:
         st.error(f"❌ Notionからの診断データ読み込みに失敗: {e}")
         return None
+
+def get_repair_case_by_id(repair_case_id, repair_cases):
+    """修理ケースIDで修理ケースを取得"""
+    if not repair_case_id or not repair_cases:
+        return None
+    
+    for case in repair_cases:
+        if case.get("case_id") == repair_case_id:
+            return case
+    return None
 
 def perform_detailed_notion_test():
     """詳細なNotion接続テストを実行"""
@@ -455,185 +524,213 @@ def perform_detailed_notion_test():
         return test_results
 
 def load_notion_repair_cases():
-    """Notionから修理ケースデータを読み込み（リレーション対応・改善版）"""
+    """Notionから修理ケースデータを読み込み（リレーション対応・改善版・キャッシュ対応）"""
+    # キャッシュが有効な場合はキャッシュから返す
+    if st.session_state.repair_cases_cache and is_cache_valid():
+        st.info("📋 キャッシュから修理ケースデータを読み込みました（高速）")
+        return st.session_state.repair_cases_cache
+    
     client = initialize_notion_client()
     if not client:
         return []
     
     try:
-        case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
-        if not case_db_id:
-            return []
-        
-        # Notionから修理ケースを取得
-        response = client.databases.query(database_id=case_db_id)
-        cases = response.get("results", [])
-        
-        repair_cases = []
-        
-        for case in cases:
-            properties = case.get("properties", {})
+        with st.spinner("📡 NotionDBから修理ケースデータを読み込み中..."):
+            case_db_id = st.secrets.get("CASE_DB_ID") or st.secrets.get("NOTION_REPAIR_CASE_DB_ID") or os.getenv("CASE_DB_ID") or os.getenv("NOTION_REPAIR_CASE_DB_ID")
+            if not case_db_id:
+                return []
             
-            case_info = {
-                "id": case.get("id"),
-                "title": "",
-                "category": "",
-                "symptoms": [],
-                "solution": "",
-                "parts": [],
-                "tools": [],
-                "related_nodes": [],  # 関連する診断ノード
-                "related_items": []   # 関連する部品・工具
-            }
+            # Notionから修理ケースを取得
+            response = client.databases.query(database_id=case_db_id)
+            cases = response.get("results", [])
             
-            # タイトルの抽出
-            title_prop = properties.get("タイトル", {})
-            if title_prop.get("type") == "title" and title_prop.get("title"):
-                case_info["title"] = title_prop["title"][0].get("plain_text", "")
+            repair_cases = []
             
-            # カテゴリの抽出
-            category_prop = properties.get("カテゴリ", {})
-            if category_prop.get("type") == "select" and category_prop.get("select"):
-                case_info["category"] = category_prop["select"].get("name", "")
+            # プログレスバーを表示
+            progress_bar = st.progress(0)
+            total_cases = len(cases)
             
-            # 症状の抽出
-            symptoms_prop = properties.get("症状", {})
-            if symptoms_prop.get("type") == "multi_select":
-                case_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
+            for i, case in enumerate(cases):
+                properties = case.get("properties", {})
+                
+                case_info = {
+                    "id": case.get("id"),
+                    "case_id": "",  # ケースIDを追加
+                    "title": "",
+                    "category": "",
+                    "symptoms": [],
+                    "solution": "",
+                    "parts": [],
+                    "tools": [],
+                    "related_nodes": [],  # 関連する診断ノード
+                    "related_items": []   # 関連する部品・工具
+                }
+                
+                # ケースIDの抽出
+                case_id_prop = properties.get("ケースID", {})
+                if case_id_prop.get("type") == "title" and case_id_prop.get("title"):
+                    case_info["case_id"] = case_id_prop["title"][0].get("plain_text", "")
+                
+                # タイトルの抽出
+                title_prop = properties.get("タイトル", {})
+                if title_prop.get("type") == "title" and title_prop.get("title"):
+                    case_info["title"] = title_prop["title"][0].get("plain_text", "")
+                
+                # カテゴリの抽出
+                category_prop = properties.get("カテゴリ", {})
+                if category_prop.get("type") == "select" and category_prop.get("select"):
+                    case_info["category"] = category_prop["select"].get("name", "")
+                
+                # 症状の抽出
+                symptoms_prop = properties.get("症状", {})
+                if symptoms_prop.get("type") == "multi_select":
+                    case_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
+                
+                # 解決方法の抽出
+                solution_prop = properties.get("解決方法", {})
+                if solution_prop.get("type") == "rich_text" and solution_prop.get("rich_text"):
+                    case_info["solution"] = solution_prop["rich_text"][0].get("plain_text", "")
+                
+                # 関連診断ノードの抽出（リレーション対応・改善版）
+                nodes_prop = properties.get("関連診断ノード", {})
+                if nodes_prop.get("type") == "relation":
+                    for relation in nodes_prop.get("relation", []):
+                        try:
+                            node_response = client.pages.retrieve(page_id=relation["id"])
+                            node_properties = node_response.get("properties", {})
+                            
+                            node_info = {
+                                "id": relation["id"],
+                                "title": "",
+                                "category": "",
+                                "symptoms": []
+                            }
+                            
+                            # ノードタイトルの抽出
+                            title_prop = node_properties.get("タイトル", {})
+                            if title_prop.get("type") == "title" and title_prop.get("title"):
+                                node_info["title"] = title_prop["title"][0].get("plain_text", "")
+                            
+                            # カテゴリの抽出
+                            cat_prop = node_properties.get("カテゴリ", {})
+                            if cat_prop.get("type") == "select" and cat_prop.get("select"):
+                                node_info["category"] = cat_prop["select"].get("name", "")
+                            
+                            # 症状の抽出
+                            symptoms_prop = node_properties.get("症状", {})
+                            if symptoms_prop.get("type") == "multi_select":
+                                node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
+                            
+                            case_info["related_nodes"].append(node_info)
+                        except Exception as e:
+                            # エラーをログに記録するが、処理を継続
+                            print(f"診断ノード情報の取得に失敗: {e}")
+                
+                # 必要な部品の抽出（リレーション対応・改善版）
+                parts_prop = properties.get("必要な部品", {})
+                if parts_prop.get("type") == "relation":
+                    # リレーションから部品情報を取得
+                    for relation in parts_prop.get("relation", []):
+                        try:
+                            item_response = client.pages.retrieve(page_id=relation["id"])
+                            item_properties = item_response.get("properties", {})
+                            
+                            item_info = {
+                                "id": relation["id"],
+                                "name": "",
+                                "category": "",
+                                "price": "",
+                                "supplier": ""
+                            }
+                            
+                            # 部品名の抽出
+                            name_prop = item_properties.get("部品名", {})
+                            if name_prop.get("type") == "title" and name_prop.get("title"):
+                                item_info["name"] = name_prop["title"][0].get("plain_text", "")
+                            
+                            # カテゴリの抽出
+                            cat_prop = item_properties.get("カテゴリ", {})
+                            if cat_prop.get("type") == "select" and cat_prop.get("select"):
+                                item_info["category"] = cat_prop["select"].get("name", "")
+                            
+                            # 価格の抽出
+                            price_prop = item_properties.get("価格", {})
+                            if price_prop.get("type") == "number":
+                                item_info["price"] = str(price_prop.get("number", ""))
+                            
+                            # サプライヤーの抽出
+                            supplier_prop = item_properties.get("サプライヤー", {})
+                            if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
+                                item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
+                            
+                            case_info["related_items"].append(item_info)
+                        except Exception as e:
+                            # エラーをログに記録するが、処理を継続
+                            print(f"部品情報の取得に失敗: {e}")
+                elif parts_prop.get("type") == "multi_select":
+                    # 従来のmulti_select形式
+                    case_info["parts"] = [item.get("name", "") for item in parts_prop.get("multi_select", [])]
+                
+                # 必要な工具の抽出（リレーション対応・改善版）
+                tools_prop = properties.get("必要な工具", {})
+                if tools_prop.get("type") == "relation":
+                    # リレーションから工具情報を取得
+                    for relation in tools_prop.get("relation", []):
+                        try:
+                            item_response = client.pages.retrieve(page_id=relation["id"])
+                            item_properties = item_response.get("properties", {})
+                            
+                            item_info = {
+                                "id": relation["id"],
+                                "name": "",
+                                "category": "",
+                                "price": "",
+                                "supplier": ""
+                            }
+                            
+                            # 工具名の抽出
+                            name_prop = item_properties.get("名前", {})
+                            if name_prop.get("type") == "title" and name_prop.get("title"):
+                                item_info["name"] = name_prop["title"][0].get("plain_text", "")
+                            
+                            # カテゴリの抽出
+                            cat_prop = item_properties.get("カテゴリ", {})
+                            if cat_prop.get("type") == "select" and cat_prop.get("select"):
+                                item_info["category"] = cat_prop["select"].get("name", "")
+                            
+                            # 価格の抽出
+                            price_prop = item_properties.get("価格", {})
+                            if price_prop.get("type") == "number":
+                                item_info["price"] = str(price_prop.get("number", ""))
+                            
+                            # サプライヤーの抽出
+                            supplier_prop = item_properties.get("サプライヤー", {})
+                            if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
+                                item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
+                            
+                            case_info["related_items"].append(item_info)
+                        except Exception as e:
+                            # エラーをログに記録するが、処理を継続
+                            print(f"工具情報の取得に失敗: {e}")
+                elif tools_prop.get("type") == "multi_select":
+                    # 従来のmulti_select形式
+                    case_info["tools"] = [item.get("name", "") for item in tools_prop.get("multi_select", [])]
+                
+                repair_cases.append(case_info)
+                
+                # プログレスバーを更新
+                progress_bar.progress((i + 1) / total_cases)
             
-            # 解決方法の抽出
-            solution_prop = properties.get("解決方法", {})
-            if solution_prop.get("type") == "rich_text" and solution_prop.get("rich_text"):
-                case_info["solution"] = solution_prop["rich_text"][0].get("plain_text", "")
+            # プログレスバーを完了
+            progress_bar.progress(1.0)
             
-            # 関連診断ノードの抽出（リレーション対応・改善版）
-            nodes_prop = properties.get("関連診断ノード", {})
-            if nodes_prop.get("type") == "relation":
-                for relation in nodes_prop.get("relation", []):
-                    try:
-                        node_response = client.pages.retrieve(page_id=relation["id"])
-                        node_properties = node_response.get("properties", {})
-                        
-                        node_info = {
-                            "id": relation["id"],
-                            "title": "",
-                            "category": "",
-                            "symptoms": []
-                        }
-                        
-                        # ノードタイトルの抽出
-                        title_prop = node_properties.get("タイトル", {})
-                        if title_prop.get("type") == "title" and title_prop.get("title"):
-                            node_info["title"] = title_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = node_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            node_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 症状の抽出
-                        symptoms_prop = node_properties.get("症状", {})
-                        if symptoms_prop.get("type") == "multi_select":
-                            node_info["symptoms"] = [item.get("name", "") for item in symptoms_prop.get("multi_select", [])]
-                        
-                        case_info["related_nodes"].append(node_info)
-                    except Exception as e:
-                        # エラーをログに記録するが、処理を継続
-                        print(f"診断ノード情報の取得に失敗: {e}")
+            # キャッシュに保存
+            st.session_state.repair_cases_cache = repair_cases
+            st.session_state.cache_timestamp = time.time()
             
-            # 必要な部品の抽出（リレーション対応・改善版）
-            parts_prop = properties.get("必要な部品", {})
-            if parts_prop.get("type") == "relation":
-                # リレーションから部品情報を取得
-                for relation in parts_prop.get("relation", []):
-                    try:
-                        item_response = client.pages.retrieve(page_id=relation["id"])
-                        item_properties = item_response.get("properties", {})
-                        
-                        item_info = {
-                            "id": relation["id"],
-                            "name": "",
-                            "category": "",
-                            "price": "",
-                            "supplier": ""
-                        }
-                        
-                        # 部品名の抽出
-                        name_prop = item_properties.get("名前", {})
-                        if name_prop.get("type") == "title" and name_prop.get("title"):
-                            item_info["name"] = name_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = item_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            item_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 価格の抽出
-                        price_prop = item_properties.get("価格", {})
-                        if price_prop.get("type") == "number":
-                            item_info["price"] = str(price_prop.get("number", ""))
-                        
-                        # サプライヤーの抽出
-                        supplier_prop = item_properties.get("サプライヤー", {})
-                        if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
-                            item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
-                        
-                        case_info["related_items"].append(item_info)
-                    except Exception as e:
-                        # エラーをログに記録するが、処理を継続
-                        print(f"部品情報の取得に失敗: {e}")
-            elif parts_prop.get("type") == "multi_select":
-                # 従来のmulti_select形式
-                case_info["parts"] = [item.get("name", "") for item in parts_prop.get("multi_select", [])]
+            st.success(f"✅ 修理ケースデータの読み込み完了: {len(repair_cases)}件")
             
-            # 必要な工具の抽出（リレーション対応・改善版）
-            tools_prop = properties.get("必要な工具", {})
-            if tools_prop.get("type") == "relation":
-                # リレーションから工具情報を取得
-                for relation in tools_prop.get("relation", []):
-                    try:
-                        item_response = client.pages.retrieve(page_id=relation["id"])
-                        item_properties = item_response.get("properties", {})
-                        
-                        item_info = {
-                            "id": relation["id"],
-                            "name": "",
-                            "category": "",
-                            "price": "",
-                            "supplier": ""
-                        }
-                        
-                        # 工具名の抽出
-                        name_prop = item_properties.get("名前", {})
-                        if name_prop.get("type") == "title" and name_prop.get("title"):
-                            item_info["name"] = name_prop["title"][0].get("plain_text", "")
-                        
-                        # カテゴリの抽出
-                        cat_prop = item_properties.get("カテゴリ", {})
-                        if cat_prop.get("type") == "select" and cat_prop.get("select"):
-                            item_info["category"] = cat_prop["select"].get("name", "")
-                        
-                        # 価格の抽出
-                        price_prop = item_properties.get("価格", {})
-                        if price_prop.get("type") == "number":
-                            item_info["price"] = str(price_prop.get("number", ""))
-                        
-                        # サプライヤーの抽出
-                        supplier_prop = item_properties.get("サプライヤー", {})
-                        if supplier_prop.get("type") == "rich_text" and supplier_prop.get("rich_text"):
-                            item_info["supplier"] = supplier_prop["rich_text"][0].get("plain_text", "")
-                        
-                        case_info["related_items"].append(item_info)
-                    except Exception as e:
-                        # エラーをログに記録するが、処理を継続
-                        print(f"工具情報の取得に失敗: {e}")
-            elif tools_prop.get("type") == "multi_select":
-                # 従来のmulti_select形式
-                case_info["tools"] = [item.get("name", "") for item in tools_prop.get("multi_select", [])]
-            
-            repair_cases.append(case_info)
-        
-        return repair_cases
+            return repair_cases
         
     except Exception as e:
         st.error(f"❌ Notionからの修理ケース読み込みに失敗: {e}")
@@ -1621,6 +1718,9 @@ def run_diagnostic_flow():
     """対話式症状診断（NotionDB連携版）"""
     st.subheader("🔍 対話式症状診断")
     
+    # デバッグ情報を追加
+    st.info("🔍 デバッグ情報: 対話式診断フローが開始されました")
+    
     # NotionDBの接続状況を確認
     notion_status = "❌ 未接続"
     diagnostic_data = None
@@ -1628,14 +1728,23 @@ def run_diagnostic_flow():
     
     if notion_api_key:
         try:
+            st.info("📡 NotionDBからデータを読み込み中...")
             diagnostic_data = load_notion_diagnostic_data()
             repair_cases = load_notion_repair_cases()
             if diagnostic_data or repair_cases:
                 notion_status = "✅ 接続済み"
+                st.success(f"✅ NotionDBからデータを読み込みました")
+                st.info(f"• 診断ノード: {len(diagnostic_data.get('nodes', [])) if diagnostic_data else 0}件")
+                st.info(f"• 開始ノード: {len(diagnostic_data.get('start_nodes', [])) if diagnostic_data else 0}件")
+                st.info(f"• 修理ケース: {len(repair_cases) if repair_cases else 0}件")
             else:
                 notion_status = "⚠️ データなし"
+                st.warning("⚠️ NotionDBからデータが読み込めませんでした")
         except Exception as e:
             notion_status = f"❌ エラー: {str(e)[:50]}"
+            st.error(f"❌ NotionDB接続エラー: {str(e)}")
+    else:
+        st.warning("⚠️ Notion APIキーが設定されていません")
     
     # 開発者モード機能（認証済みの場合のみ表示）
     auth_status = st.session_state.get("developer_authenticated", False)
@@ -1646,17 +1755,17 @@ def run_diagnostic_flow():
             # サイドバーに開発者モード機能を表示
             st.sidebar.markdown("---")
             st.sidebar.markdown("### 🔧 開発者モード")
-            st.sidebar.success("🔧 開発者モード: 認証済み")
+        st.sidebar.success("🔧 開発者モード: 認証済み")
             
-            col1, col2 = st.sidebar.columns(2)
-            with col1:
-                if st.button("🔓 ログアウト", help="開発者認証を解除します"):
-                    st.session_state.developer_authenticated = False
-                    st.rerun()
-            with col2:
-                if st.button("🔄 更新", help="設定を再読み込みします"):
-                    st.rerun()
-        else:
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("🔓 ログアウト", help="開発者認証を解除します"):
+                st.session_state.developer_authenticated = False
+                st.rerun()
+        with col2:
+            if st.button("🔄 更新", help="設定を再読み込みします"):
+                st.rerun()
+    else:
             # サイドバー非表示時はメイン画面に開発者モード機能を表示
             st.markdown("---")
             st.markdown("### 🔧 開発者モード")
@@ -1671,14 +1780,25 @@ def run_diagnostic_flow():
                 if st.button("🔄 更新", help="設定を再読み込みします"):
                     st.rerun()
     
-    # 接続状況を表示（非表示化）
-    # st.info(f"**NotionDB接続状況**: {notion_status}")
+    # 接続状況を表示
+    st.info(f"**NotionDB接続状況**: {notion_status}")
     
-    # NotionDB接続エラーメッセージを非表示化（本番環境対応）
-    # if notion_status == "❌ 未接続":
-    #     st.warning("NotionDBに接続できません。環境変数の設定を確認してください。")
-    #     st.info("**必要な環境変数**:")
-    #     st.code("NOTION_API_KEY=your_notion_token\nNODE_DB_ID=your_diagnostic_db_id\nCASE_DB_ID=your_repair_case_db_id")
+    # キャッシュ管理ボタン
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 データを再読み込み", help="キャッシュをクリアして最新データを取得します"):
+            clear_cache()
+            st.success("✅ キャッシュをクリアしました。データを再読み込みします。")
+            st.rerun()
+    
+    with col2:
+        if st.session_state.cache_timestamp:
+            cache_age = int(time.time() - st.session_state.cache_timestamp)
+            cache_minutes = cache_age // 60
+            cache_seconds = cache_age % 60
+            st.info(f"📋 キャッシュ更新: {cache_minutes}分{cache_seconds}秒前")
+        else:
+            st.info("📋 キャッシュなし")
     
     # 診断モードの選択（開発者モード対応）
     if is_developer_mode():
@@ -1686,53 +1806,42 @@ def run_diagnostic_flow():
     else:
         diagnostic_options = ["🤖 AI診断（推奨）", "📋 対話式診断"]
     
+    st.info(f"🔍 利用可能な診断モード: {', '.join(diagnostic_options)}")
+    
     diagnostic_mode = st.radio(
         "診断モードを選択してください:",
         diagnostic_options
     )
     
-    # デバッグ情報を追加（非表示化）
-    # if st.session_state.get('sidebar_visible', True):
-    #     if st.sidebar.checkbox("🔍"):
-    #         st.sidebar.write("**デバッグ情報:**")
-    #         st.sidebar.write(f"• 選択されたモード: {diagnostic_mode}")
-    #         st.sidebar.write(f"• 開発者モード関数結果: {is_developer_mode()}")
-    #         st.sidebar.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
-    #         st.sidebar.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
-    #         st.sidebar.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
-    #         
-    #         # 認証状態の詳細情報
-    #         st.sidebar.write("**認証状態の詳細:**")
-    #         st.sidebar.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
-    #         st.sidebar.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
-    #         
-    #         # 認証リセットボタン
-    #         if st.sidebar.button("🔄 認証状態をリセット"):
-    #             st.session_state.developer_authenticated = False
-    #             st.sidebar.success("認証状態をリセットしました")
-    #             st.rerun()
-    # else:
-    #     if st.checkbox("🔍"):
-    #         st.write("**デバッグ情報:**")
-    #         st.write(f"• 選択されたモード: {diagnostic_mode}")
-    #         st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
-    #         st.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
-    #         st.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
-    #         
-    #         # 認証状態の詳細情報
-    #         st.write("**認証状態の詳細:**")
-    #         st.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
-    #         st.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
-    #         
-    #         # 認証リセットボタン
-    #         if st.button("🔄 認証状態をリセット"):
-    #             st.session_state.developer_authenticated = False
-    #             st.success("認証状態をリセットしました")
-    #             st.rerun()
+    st.info(f"🎯 選択された診断モード: {diagnostic_mode}")
+    
+    # デバッグ情報を追加
+    if st.checkbox("🔍 デバッグ情報を表示"):
+        st.write("**デバッグ情報:**")
+        st.write(f"• 選択されたモード: {diagnostic_mode}")
+        st.write(f"• 開発者モード関数結果: {is_developer_mode()}")
+        st.write(f"• セッション状態: {st.session_state.get('developer_authenticated', False)}")
+        st.write(f"• 環境変数: {os.getenv('DEVELOPER_MODE', '未設定')}")
+        st.write(f"• シークレット: {st.secrets.get('DEVELOPER_MODE', '未設定')}")
+        
+        # 認証状態の詳細情報
+        st.write("**認証状態の詳細:**")
+        st.write(f"• 認証済み: {'✅' if st.session_state.get('developer_authenticated', False) else '❌'}")
+        st.write(f"• パスワード設定: {'✅' if (os.getenv('DEVELOPER_PASSWORD') or st.secrets.get('DEVELOPER_PASSWORD')) else '❌'}")
+        
+        # 認証リセットボタン
+        if st.button("🔄 認証状態をリセット"):
+            st.session_state.developer_authenticated = False
+            st.success("認証状態をリセットしました")
+            st.rerun()
+    
+    st.info(f"🚀 診断モード '{diagnostic_mode}' の処理を開始します...")
     
     if diagnostic_mode == "🤖 AI診断（推奨）":
+        st.success("✅ AI診断モードを開始します")
         run_ai_diagnostic(diagnostic_data, repair_cases)
     elif diagnostic_mode == "📋 対話式診断":
+        st.success("✅ 対話式診断モードを開始します")
         run_interactive_diagnostic(diagnostic_data, repair_cases)
     elif diagnostic_mode == "🔍 詳細診断":
         if is_developer_mode():
@@ -1745,6 +1854,9 @@ def run_diagnostic_flow():
             else:
                 st.info("💡 上記の「🔐 開発者認証」ボタンから認証してください")
             show_developer_auth()
+    else:
+        st.error(f"❌ 未知の診断モード: {diagnostic_mode}")
+        st.info("💡 診断モードを正しく選択してください")
 
 def run_ai_diagnostic(diagnostic_data, repair_cases):
     """AI診断モード（リレーション活用版）"""
@@ -1785,6 +1897,9 @@ def run_ai_diagnostic(diagnostic_data, repair_cases):
                 
                 st.markdown("## 📋 AI診断結果")
                 st.markdown(diagnosis_result)
+                
+                # 修理ケースIDを使った関連修理ケースの表示
+                show_repair_case_by_id(symptoms_input, diagnostic_data, repair_cases)
                 
                 # リレーションデータの詳細表示
                 show_relation_details(symptoms_input, diagnostic_data, repair_cases)
@@ -1842,6 +1957,42 @@ def create_relation_context(symptoms_input, diagnostic_data, repair_cases):
                     context += f"    • {item['name']}{price_info}{supplier_info}\n"
     
     return context
+
+def show_repair_case_by_id(symptoms_input, diagnostic_data, repair_cases):
+    """修理ケースIDを使って関連する修理ケースを表示"""
+    if not diagnostic_data or not diagnostic_data.get("nodes"):
+        return
+    
+    # 症状に関連する診断ノードを特定
+    relevant_nodes = []
+    for node in diagnostic_data["nodes"]:
+        if any(symptom in symptoms_input.lower() for symptom in node.get("symptoms", [])):
+            relevant_nodes.append(node)
+    
+    if not relevant_nodes:
+        return
+    
+    st.markdown("## 🔧 関連する修理ケース")
+    
+    # 各診断ノードの修理ケースIDを使って修理ケースを表示
+    for node in relevant_nodes[:3]:  # 最大3件まで表示
+        repair_case_id = node.get("repair_case_id", "")
+        if repair_case_id:
+            repair_case = get_repair_case_by_id(repair_case_id, repair_cases)
+            if repair_case:
+                with st.expander(f"🔹 {node['title']} → {repair_case.get('title', '修理ケース')}"):
+                    st.write("**診断ノード**:", node['title'])
+                    st.write("**修理ケースID**:", repair_case_id)
+                    st.write("**症状**:", repair_case.get('symptoms', ''))
+                    st.write("**解決方法**:", repair_case.get('solution', ''))
+                    
+                    # 関連部品・工具の表示
+                    if repair_case.get("related_items"):
+                        st.write("**必要な部品・工具**:")
+                        for item in repair_case["related_items"][:3]:
+                            price_info = f" (¥{item['price']})" if item.get('price') else ""
+                            supplier_info = f" - {item['supplier']}" if item.get('supplier') else ""
+                            st.write(f"  • {item['name']}{price_info}{supplier_info}")
 
 def show_relation_details(symptoms_input, diagnostic_data, repair_cases):
     """リレーションデータの詳細を表示"""
@@ -1928,61 +2079,36 @@ def run_interactive_diagnostic(diagnostic_data, repair_cases):
         categories = {}
         for node in diagnostic_data["start_nodes"]:
             if node["title"]:
-                categories[node["title"]] = node["symptoms"]
+                # タイトルからカテゴリー名を抽出（絵文字と説明文を分離）
+                title = node["title"]
+                if " " in title:
+                    # 絵文字部分をカテゴリー名として使用
+                    emoji_part = title.split(" ")[0]
+                    # 適切なカテゴリー名にマッピング
+                    category_mapping = {
+                        "🌧️": "🌧️ 雨漏り・防水関連",
+                        "⚡": "⚡ 電気・電装系関連",
+                        "🔥": "🔥 ガス・ヒーター関連",
+                        "❄️": "❄️ 冷蔵庫・冷却関連",
+                        "🌪️": "🌪️ ルーフベント・換気関連",
+                        "🚽": "🚽 トイレ・排水関連",
+                        "💧": "💧 水道・ポンプ関連",
+                        "🔌": "🔌 インバーター・電源関連",
+                        "🔋": "🔋 バッテリー・充電関連"
+                    }
+                    category_name = category_mapping.get(emoji_part, title)
+                else:
+                    category_name = title
+                
+                categories[category_name] = node["symptoms"]
         # NotionDB接続成功メッセージを非表示化（本番環境対応）
         # st.success("✅ NotionDBから診断データを読み込みました")
     else:
-        # 詳細なデフォルトのカテゴリ（NotionDBが利用できない場合）
-        categories = {
-            "🔋 バッテリー関連": [
-                "電圧が12V以下に低下", "充電されない", "急激な消耗", "バッテリー液の減少",
-                "端子の腐食", "充電時の異臭", "バッテリーの膨張", "充電器が動作しない",
-                "エンジン始動時の異音", "電装品の動作不良", "バッテリーの温度上昇"
-            ],
-            "🔌 インバーター関連": [
-                "電源が入らない", "出力ゼロ", "異音がする", "過熱する", "LEDが点滅する",
-                "正弦波出力が不安定", "負荷時に停止", "ファンが回らない", "エラーコードが表示",
-                "電圧が不安定", "周波数がずれる", "ノイズが発生"
-            ],
-            "🚽 トイレ関連": [
-                "水漏れがする", "フラッパーが故障", "臭いがする", "水が流れない", "タンクが満杯",
-                "パッキンが劣化", "レバーが動かない", "水が止まらない", "タンクの亀裂",
-                "配管の詰まり", "排水ポンプが動作しない"
-            ],
-            "🌪️ ルーフベント・換気扇関連": [
-                "ファンが回らない", "雨漏りがする", "開閉が不良", "異音がする", "モーターが過熱",
-                "スイッチが効かない", "風量が弱い", "振動が激しい", "電源が入らない",
-                "シャッターが動かない", "防水シールが劣化"
-            ],
-            "💧 水道・ポンプ関連": [
-                "ポンプが動作しない", "水が出ない", "配管から漏れる", "水圧が弱い", "異音がする",
-                "ポンプが過熱する", "タンクが空になる", "フィルターが詰まる", "配管が凍結",
-                "水質が悪い", "ポンプが頻繁に動作"
-            ],
-            "❄️ 冷蔵庫関連": [
-                "冷えない", "冷凍室が凍らない", "コンプレッサーが動作しない", "異音がする",
-                "霜が付く", "ドアが閉まらない", "温度設定が効かない", "過熱する",
-                "ガス漏れの臭い", "電気代が高い", "ドアパッキンが劣化"
-            ],
-            "🔥 ガス・ヒーター関連": [
-                "火が付かない", "不完全燃焼", "異臭がする", "温度が上がらない", "安全装置が作動",
-                "ガス漏れ", "点火音がしない", "炎が不安定", "過熱する", "ガス栓が固い"
-            ],
-            "⚡ 電気・電装系関連": [
-                "LEDが点灯しない", "配線がショート", "ヒューズが切れる", "電圧が不安定",
-                "スイッチが効かない", "配線が熱い", "漏電する", "コンセントが使えない",
-                "バッテリーが消耗する", "電装品が動作不良"
-            ],
-            "🌧️ 雨漏り・防水関連": [
-                "屋根から雨漏り", "ウインドウ周りから漏れる", "ドアから水が入る", "シーリングが劣化",
-                "パッキンが硬化", "天窓から漏れる", "配線取り出し部から漏れる",
-                "ルーフベントから漏れる", "継ぎ目から漏れる", "コーキングが剥がれる"
-            ],
-            "🔧 その他の故障": [
-                "異音がする", "振動が激しい", "動作が不安定", "部品が破損", "配管が詰まる",
-                "ドアが閉まらない", "窓が開かない", "家具が壊れる", "床が抜ける", "壁が剥がれる"
-            ]
-        }
+        # デフォルトのカテゴリ（NotionDBが利用できない場合）
+        categories = {}
+        st.warning("⚠️ NotionDBから診断データを読み込めませんでした")
+        st.info("💡 NotionDBの接続とデータの確認をお願いします")
+        return
         # NotionDB接続エラーメッセージを非表示化（本番環境対応）
         # st.warning("⚠️ NotionDBが利用できないため、デフォルトの診断データを使用しています")
         # st.info("💡 NotionDB接続を改善するには:")
@@ -2240,6 +2366,20 @@ def main():
     # セッション状態の初期化
     if "developer_authenticated" not in st.session_state:
         st.session_state.developer_authenticated = False
+    
+    # パフォーマンス改善のためのキャッシュ機能
+    if "diagnostic_data_cache" not in st.session_state:
+        st.session_state.diagnostic_data_cache = None
+    if "repair_cases_cache" not in st.session_state:
+        st.session_state.repair_cases_cache = None
+    if "knowledge_base_cache" not in st.session_state:
+        st.session_state.knowledge_base_cache = None
+    if "cache_timestamp" not in st.session_state:
+        st.session_state.cache_timestamp = None
+    
+    # 開発者モードの一時的な有効化（DB確認用）
+    if os.getenv("DEVELOPER_MODE", "").lower() in ["true", "1", "yes", "on"]:
+        st.session_state.developer_authenticated = True
     
     st.set_page_config(
         page_title="キャンピングカー修理AI相談",
@@ -2868,8 +3008,15 @@ def is_developer_mode():
     if st.session_state.get("developer_authenticated", False):
         return True
     
-    # 環境変数やシークレットでの設定は参考情報として使用
-    # 実際の認証はセッション状態でのみ判定
+    # 環境変数やシークレットでの設定も確認（DB確認用）
+    dev_mode = os.getenv("DEVELOPER_MODE", "").lower()
+    if dev_mode in ["true", "1", "yes", "on"]:
+        return True
+    
+    dev_mode_secret = st.secrets.get("DEVELOPER_MODE", "").lower()
+    if dev_mode_secret in ["true", "1", "yes", "on"]:
+        return True
+    
     return False
 
 def is_developer_mode_configured():
