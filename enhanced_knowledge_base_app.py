@@ -1754,28 +1754,28 @@ def run_diagnostic_flow():
             st.sidebar.markdown("### 🔧 開発者モード")
         # st.sidebar.success("🔧 開発者モード: 認証済み")  # 非表示化
             
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            if st.button("🔓 ログアウト", help="開発者認証を解除します"):
-                st.session_state.developer_authenticated = False
-                st.rerun()
-        with col2:
-            if st.button("🔄 更新", help="設定を再読み込みします"):
-                st.rerun()
-    else:
+        # col1, col2 = st.sidebar.columns(2)  # 開発者モードボタンを非表示化
+        # with col1:
+        #     if st.button("🔓 ログアウト", help="開発者認証を解除します"):
+        #         st.session_state.developer_authenticated = False
+        #         st.rerun()
+        # with col2:
+        #     if st.button("🔄 更新", help="設定を再読み込みします"):
+        #         st.rerun()
+        else:
             # サイドバー非表示時はメイン画面に開発者モード機能を表示
             st.markdown("---")
-            st.markdown("### 🔧 開発者モード")
+            # st.markdown("### 🔧 開発者モード")  # 開発者モードの文字を非表示化
             # st.success("🔧 開発者モード: 認証済み")  # 非表示化
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🔓 ログアウト", help="開発者認証を解除します"):
-                    st.session_state.developer_authenticated = False
-                    st.rerun()
-            with col2:
-                if st.button("🔄 更新", help="設定を再読み込みします"):
-                    st.rerun()
+            # col1, col2 = st.columns(2)  # 開発者モードボタンを非表示化
+            # with col1:
+            #     if st.button("🔓 ログアウト", help="開発者認証を解除します"):
+            #         st.session_state.developer_authenticated = False
+            #         st.rerun()
+            # with col2:
+            #     if st.button("🔄 更新", help="設定を再読み込みします"):
+            #         st.rerun()
     
     # 接続状況を表示（デバッグ情報を非表示化）
     # st.info(f"**NotionDB接続状況**: {notion_status}")  # 非表示化
